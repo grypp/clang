@@ -967,6 +967,11 @@ StmtResult Parser::ParseOpenMPDeclarativeOrExecutableDirective(
       ScopeFlags |= Scope::OpenMPLoopDirectiveScope;
     if (isOpenMPSimdDirective(DKind))
       ScopeFlags |= Scope::OpenMPSimdDirectiveScope;
+
+    bool isAutoTargetMode = getLangOpts().OpenMPAutomatic;
+    if( isAutoTargetMode && DKind == OMPD_parallel_for )
+        	DKind = OMPD_target_teams_distribute_parallel_for;
+
     ParseScope OMPDirectiveScope(this, ScopeFlags);
     Actions.StartOpenMPDSABlock(DKind, DirName, Actions.getCurScope(), Loc);
 
@@ -985,6 +990,10 @@ StmtResult Parser::ParseOpenMPDeclarativeOrExecutableDirective(
         FirstClauses[CKind].setPointer(Clause);
         Clauses.push_back(Clause);
       }
+
+      //TODO Currently, if parallel for has schedule clause, it will work on as it is.
+      if(CKind == OMPC_schedule)
+    	  isAutoTargetMode=false;
 
       // Skip ',' if any.
       if (Tok.is(tok::comma))

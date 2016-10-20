@@ -2108,6 +2108,8 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
       Opts.OpenMP && Args.hasArg(options::OPT_fopenmp_nvptx_nospmd);
   Opts.OpenMPImplicitDeclareTarget =
       Opts.OpenMP && Args.hasArg(options::OPT_fopenmp_implicit_declare_target);
+  Opts.OpenMPAutomatic =
+      Opts.OpenMP && Args.hasArg(options::OPT_fopenmp_automatic);
 
   if (Opts.OpenMP) {
     int Version =

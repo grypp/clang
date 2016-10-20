@@ -6297,6 +6297,12 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     }
   }
 
+  // This flags allows automatically upgrade legacy OpenMP code to the most recent version. The main aim of the flag automatic parallelisation for hybrid system.
+  if (Args.hasFlag(options::OPT_fopenmp_automatic,
+                     options::OPT_fnoopenmp_automatic,
+                     /*Default=*/false))
+  CmdArgs.push_back("-fopenmp-automatic");
+
   // OpenMP 4.5 standard does not allow to use any declaration in target region
   // unless they are not specified inside of declare target region.
   // Implicit declare target is an extension to enable using
