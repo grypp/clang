@@ -1704,7 +1704,7 @@ class OffloadingActionBuilder final {
 
       // If we are dealing with an input action, replicate it for each GPU
       // architecture. If we are in host-only mode we return 'success' so that
-      // the host use the CUDA offload kind.
+      // the host uses the CUDA offload kind.
       if (auto *IA = dyn_cast<InputAction>(HostAction)) {
         assert(!GpuArchList.empty() &&
                "We should have at least one GPU architecture.");

@@ -232,13 +232,13 @@ int main() {
 // CHECK: call void @__kmpc_for_static_init_4(
 
 // assignment: vec[i] = t_var;
-// CHECK: [[T_VAR_PRIV_VAL:%.+]] = load i{{[0-9]+}}, i{{[0-9]+}}* [[T_VAR_PRIV]],  
+// CHECK: [[T_VAR_PRIV_VAL:%.+]] = load i{{[0-9]+}}, i{{[0-9]+}}* [[T_VAR_PRIV]],
 // CHECK: [[VEC_PTR:%.+]] = getelementptr inbounds [2 x i{{[0-9]+}}], [2 x i{{[0-9]+}}]* [[VEC_PRIV]], i{{[0-9]+}} 0, i{{[0-9]+}} {{.+}}
-// CHECK:  store i{{[0-9]+}} [[T_VAR_PRIV_VAL]], i{{[0-9]+}}* [[VEC_PTR]],
+// CHECK: store i{{[0-9]+}} [[T_VAR_PRIV_VAL]], i{{[0-9]+}}* [[VEC_PTR]],
 
 // assignment: s_arr[i] = var;
-// CHECK: [[S_ARR_PTR:%.+]] = getelementptr inbounds [2 x [[S_FLOAT_TY]]], [2 x [[S_FLOAT_TY]]]* [[S_ARR_PRIV]],
 // CHECK: [[TMP_VAL:%.+]] = load [[S_FLOAT_TY]]*, [[S_FLOAT_TY]]** [[TMP_PRIV]],
+// CHECK: [[S_ARR_PTR:%.+]] = getelementptr inbounds [2 x [[S_FLOAT_TY]]], [2 x [[S_FLOAT_TY]]]* [[S_ARR_PRIV]],
 // CHECK: [[S_ARR_PTR_BCAST:%.+]] = bitcast [[S_FLOAT_TY]]* [[S_ARR_PTR]] to i8*
 // CHECK: [[TMP_VAL_BCAST:%.+]] = bitcast [[S_FLOAT_TY]]* [[TMP_VAL]] to i8*
 // CHECK: call void @llvm.memcpy.{{.+}}(i8* [[S_ARR_PTR_BCAST]], i8* [[TMP_VAL_BCAST]],
@@ -341,8 +341,8 @@ int main() {
 // CHECK:  store i{{[0-9]+}} [[T_VAR_PRIV_VAL1]], i{{[0-9]+}}* [[VEC_PTR1]],
 
 // assignment: s_arr[i] = var;
-// CHECK: [[S_ARR_PTR1:%.+]] = getelementptr inbounds [2 x [[S_INT_TY]]], [2 x [[S_INT_TY]]]* [[S_ARR_PRIV1]],
 // CHECK: [[TMP_VAL1:%.+]] = load [[S_INT_TY]]*, [[S_INT_TY]]** [[TMP_PRIV1]],
+// CHECK: [[S_ARR_PTR1:%.+]] = getelementptr inbounds [2 x [[S_INT_TY]]], [2 x [[S_INT_TY]]]* [[S_ARR_PRIV1]],
 // CHECK: [[S_ARR_PTR_BCAST1:%.+]] = bitcast [[S_INT_TY]]* [[S_ARR_PTR1]] to i8*
 // CHECK: [[TMP_VAL_BCAST1:%.+]] = bitcast [[S_INT_TY]]* [[TMP_VAL1]] to i8*
 // CHECK: call void @llvm.memcpy.{{.+}}(i8* [[S_ARR_PTR_BCAST1]], i8* [[TMP_VAL_BCAST1]],

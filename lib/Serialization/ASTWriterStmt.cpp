@@ -1576,6 +1576,7 @@ void ASTStmtWriter::VisitArrayTypeTraitExpr(ArrayTypeTraitExpr *E) {
   Record.push_back(E->getValue());
   Record.AddSourceRange(E->getSourceRange());
   Record.AddTypeSourceInfo(E->getQueriedTypeSourceInfo());
+  Record.AddStmt(E->getDimensionExpression());
   Code = serialization::EXPR_ARRAY_TYPE_TRAIT;
 }
 
@@ -2241,6 +2242,7 @@ void ASTStmtWriter::VisitOMPLoopDirective(OMPLoopDirective *D) {
     Record.AddStmt(D->getDistCond());
     Record.AddStmt(D->getDistInc());
     Record.AddStmt(D->getPrevEnsureUpperBound());
+    Record.AddStmt(D->getInnermostIterationVariable());
     Record.AddStmt(D->getNumIterations());
   }
   for (auto I : D->counters()) {
