@@ -19,6 +19,7 @@
 #include "clang/AST/Type.h"
 #include "clang/Basic/OpenMPKinds.h"
 #include "clang/Basic/SourceLocation.h"
+#include "CGOpenMPRuntimeAnalyser.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringMap.h"
@@ -109,6 +110,7 @@ struct OMPTaskDataTy final {
 class CGOpenMPRuntime {
 protected:
   CodeGenModule &CGM;
+  CGOpenMPRuntimeAnalyser *OMPAnalyser;
 
   /// \brief Creates offloading entry for the provided entry ID \a ID,
   /// address \a Addr and size \a Size.

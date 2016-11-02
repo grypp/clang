@@ -812,6 +812,8 @@ CGOpenMPRuntime::CGOpenMPRuntime(CodeGenModule &CGM)
   KmpCriticalNameTy = llvm::ArrayType::get(CGM.Int32Ty, /*NumElements*/ 8);
 
   loadOffloadInfoMetadata();
+
+  OMPAnalyser = new CGOpenMPRuntimeAnalyser(CGM);
 }
 
 void CGOpenMPRuntime::clear() {
@@ -5206,6 +5208,10 @@ void CGOpenMPRuntime::emitTargetOutlinedFunctionHelper(
   }
 
   const CapturedStmt &CS = *cast<CapturedStmt>(D.getAssociatedStmt());
+
+  //TODO Do analyze here
+  //OMPAnalyser.AnalyseTarget(CS, EntryFnName);
+
 
   CodeGenFunction CGF(CGM, true);
   CGOpenMPTargetRegionInfo CGInfo(CS, CodeGen, EntryFnName);
