@@ -2109,9 +2109,11 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
       Opts.OpenMP && Args.hasArg(options::OPT_fopenmp_nvptx_nospmd);
   Opts.OpenMPAutomatic =
       Opts.OpenMP && Args.hasArg(options::OPT_fopenmp_automatic);
-  //It is activated in case automatic target OpenMP is enabled.
+  // It is activated in case automatic target OpenMP is enabled.
   Opts.OpenMPImplicitDeclareTarget =
-      Opts.OpenMP && (Opts.OpenMPAutomatic || Args.hasArg(options::OPT_fopenmp_implicit_declare_target));
+      Opts.OpenMP &&
+      (Opts.OpenMPAutomatic ||
+       Args.hasArg(options::OPT_fopenmp_implicit_declare_target));
 
   if (Opts.OpenMP) {
     int Version =

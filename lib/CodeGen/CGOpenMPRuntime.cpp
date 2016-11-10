@@ -5209,9 +5209,8 @@ void CGOpenMPRuntime::emitTargetOutlinedFunctionHelper(
 
   const CapturedStmt &CS = *cast<CapturedStmt>(D.getAssociatedStmt());
 
-  //TODO Do analyze here
-  //OMPAnalyser.AnalyseTarget(CS, EntryFnName);
-
+  if (!CGM.getLangOpts().OpenMPIsDevice)
+    OMPAnalyser->AnalyseDirective(D, EntryFnName);
 
   CodeGenFunction CGF(CGM, true);
   CGOpenMPTargetRegionInfo CGInfo(CS, CodeGen, EntryFnName);

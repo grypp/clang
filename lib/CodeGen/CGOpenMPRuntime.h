@@ -14,12 +14,12 @@
 #ifndef LLVM_CLANG_LIB_CODEGEN_CGOPENMPRUNTIME_H
 #define LLVM_CLANG_LIB_CODEGEN_CGOPENMPRUNTIME_H
 
+#include "CGOpenMPRuntimeAnalyser.h"
 #include "CGValue.h"
 #include "CodeGenFunction.h"
 #include "clang/AST/Type.h"
 #include "clang/Basic/OpenMPKinds.h"
 #include "clang/Basic/SourceLocation.h"
-#include "CGOpenMPRuntimeAnalyser.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringMap.h"
