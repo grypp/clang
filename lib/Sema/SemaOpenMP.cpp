@@ -4522,9 +4522,19 @@ generateCoalescedSchedule(Sema &SemaRef, ArrayRef<OMPClause *> Clauses) {
     if (ScheduleClause.begin() != ScheduleClause.end()) {
       ScheduleKind = (*ScheduleClause.begin())->getScheduleKind();
       if (const auto *Ch = (*ScheduleClause.begin())->getChunkSize()) {
-        llvm::APSInt Result;
-        ChunkSizeOne =
-            Ch->isIntegerConstantExpr(Result, SemaRef.Context) && Result == 1;
+        if (!Ch->isValueDependent() && !Ch->isTypeDependent() &&
+            !Ch->isInstantiationDependent() &&
+            !Ch->containsUnexpandedParameterPack()) {
+          SourceLocation ChLoc = Ch->getLocStart();
+          ExprResult Val =
+            SemaRef.PerformOpenMPImplicitIntegerConversion(ChLoc, const_cast<Expr *>(Ch));
+          if (!Val.isInvalid()) {
+            Expr *ValExpr = Val.get();
+            llvm::APSInt Result;
+            ChunkSizeOne =
+              ValExpr->isIntegerConstantExpr(Result, SemaRef.Context) && Result == 1;
+          }
+        }
       }
     }
 
