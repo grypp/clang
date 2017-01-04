@@ -75,7 +75,10 @@ __DEVICE__ float frexp(float __arg, int *__exp) {
 __DEVICE__ bool isinf(float __x) { return ::__isinff(__x); }
 __DEVICE__ bool isinf(double __x) { return ::__isinf(__x); }
 __DEVICE__ bool isfinite(float __x) { return ::__finitef(__x); }
-__DEVICE__ bool isfinite(double __x) { return ::__finite(__x); }
+// For inscrutable reasons, __finite(), the double-precision version of
+// __finitef, does not exist when compiling for MacOS.  __isfinited is available
+// everywhere and is just as good.
+__DEVICE__ bool isfinite(double __x) { return ::__isfinited(__x); }
 __DEVICE__ bool isgreater(float __x, float __y) {
   return __builtin_isgreater(__x, __y);
 }
@@ -141,7 +144,7 @@ __DEVICE__ double pow(double __base, int __iexp) {
   return ::powi(__base, __iexp);
 }
 __DEVICE__ bool signbit(float __x) { return ::__signbitf(__x); }
-__DEVICE__ bool signbit(double __x) { return ::__signbit(__x); }
+__DEVICE__ bool signbit(double __x) { return ::__signbitd(__x); }
 __DEVICE__ float sin(float __x) { return ::sinf(__x); }
 __DEVICE__ float sinh(float __x) { return ::sinhf(__x); }
 __DEVICE__ float sqrt(float __x) { return ::sqrtf(__x); }
@@ -316,7 +319,19 @@ scalbn(__T __x, int __exp) {
   return std::scalbn((double)__x, __exp);
 }
 
+// We need to define these overloads in exactly the namespace our standard
+// library uses (including the right inline namespace), otherwise they won't be
+// picked up by other functions in the standard library (e.g. functions in
+// <complex>).  Thus the ugliness below.
+#ifdef _LIBCPP_BEGIN_NAMESPACE_STD
+_LIBCPP_BEGIN_NAMESPACE_STD
+#else
 namespace std {
+#ifdef _GLIBCXX_BEGIN_NAMESPACE_VERSION
+_GLIBCXX_BEGIN_NAMESPACE_VERSION
+#endif
+#endif
+
 // Pull the new overloads we defined above into namespace std.
 using ::acos;
 using ::acosh;
@@ -451,7 +466,15 @@ using ::tanf;
 using ::tanhf;
 using ::tgammaf;
 using ::truncf;
-}
+
+#ifdef _LIBCPP_END_NAMESPACE_STD
+_LIBCPP_END_NAMESPACE_STD
+#else
+#ifdef _GLIBCXX_BEGIN_NAMESPACE_VERSION
+_GLIBCXX_END_NAMESPACE_VERSION
+#endif
+} // namespace std
+#endif
 
 #undef __DEVICE__
 

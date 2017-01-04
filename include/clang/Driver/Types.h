@@ -13,6 +13,9 @@
 #include "clang/Driver/Phases.h"
 #include "llvm/ADT/SmallVector.h"
 
+namespace llvm {
+class StringRef;
+}
 namespace clang {
 namespace driver {
 namespace types {
@@ -78,13 +81,13 @@ namespace types {
   bool isObjC(ID Id);
 
   /// isSrcFile - Is this a source file, i.e. something that still has to be
-  /// preprocessed. The logic behind this is the same that decides the first
-  /// compilation phase is a preprocessor one.
+  /// preprocessed. The logic behind this is the same that decides if the first
+  /// compilation phase is a preprocessing one.
   bool isSrcFile(ID Id);
 
   /// lookupTypeForExtension - Lookup the type to use for the file
   /// extension \p Ext.
-  ID lookupTypeForExtension(const char *Ext);
+  ID lookupTypeForExtension(llvm::StringRef Ext);
 
   /// lookupTypeForTypSpecifier - Lookup the type to use for a user
   /// specified type name.

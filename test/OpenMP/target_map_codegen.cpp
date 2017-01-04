@@ -16,10 +16,10 @@
 #ifdef CK1
 
 // CK1-DAG: [[SIZES:@.+]] = {{.+}}constant [1 x i[[sz:64|32]]] [i{{64|32}} 4]
-// Map types: OMP_MAP_PRIVATE_VAL | OMP_MAP_IS_FIRST = 288
-// CK1-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 288]
+// Map types: OMP_MAP_PRIVATE_VAL | OMP_MAP_IS_FIRST | OMP_MAP_IMPLICIT = 800
+// CK1-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 800]
 
-// CK1-LABEL: implicit_maps_integer
+// CK1-LABEL: implicit_maps_integer{{.*}}(
 void implicit_maps_integer (int a){
   int i = a;
 
@@ -61,13 +61,13 @@ void implicit_maps_integer (int a){
 #ifdef CK2
 
 // CK2: [[SIZES:@.+]] = {{.+}}constant [1 x i[[sz:64|32]]] [i{{64|32}} 4]
-// Map types: OMP_MAP_PRIVATE_VAL | OMP_MAP_IS_FIRST = 288
-// CK2: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 288]
+// Map types: OMP_MAP_PRIVATE_VAL | OMP_MAP_IS_FIRST | OMP_MAP_IMPLICIT = 800
+// CK2: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 800]
 // CK2: [[SIZES2:@.+]] = {{.+}}constant [1 x i[[sz]]] zeroinitializer
-// Map types: OMP_MAP_IS_PTR = 32
-// CK2: [[TYPES2:@.+]] = {{.+}}constant [1 x i32] [i32 32]
+// Map types: OMP_MAP_IS_PTR | OMP_MAP_IMPLICIT = 544
+// CK2: [[TYPES2:@.+]] = {{.+}}constant [1 x i32] [i32 544]
 
-// CK2-LABEL: implicit_maps_reference
+// CK2-LABEL: implicit_maps_reference{{.*}}(
 void implicit_maps_reference (int a, int *b){
   int &i = a;
   // CK2-DAG: call i32 @__tgt_target(i32 {{.+}}, i8* {{.+}}, i32 1, i8** [[BPGEP:%[0-9]+]], i8** [[PGEP:%[0-9]+]], {{.+}}[[SIZES]]{{.+}}, {{.+}}[[TYPES]]{{.+}})
@@ -140,10 +140,10 @@ void implicit_maps_reference (int a, int *b){
 #ifdef CK3
 
 // CK3-DAG: [[SIZES:@.+]] = {{.+}}constant [1 x i[[sz:64|32]]] [i{{64|32}} 4]
-// Map types: OMP_MAP_PRIVATE_VAL | OMP_MAP_IS_FIRST = 288
-// CK3-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 288]
+// Map types: OMP_MAP_PRIVATE_VAL | OMP_MAP_IS_FIRST | OMP_MAP_IMPLICIT = 800
+// CK3-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 800]
 
-// CK3-LABEL: implicit_maps_parameter
+// CK3-LABEL: implicit_maps_parameter{{.*}}(
 void implicit_maps_parameter (int a){
 
   // CK3-DAG: call i32 @__tgt_target(i32 {{.+}}, i8* {{.+}}, i32 1, i8** [[BPGEP:%[0-9]+]], i8** [[PGEP:%[0-9]+]], {{.+}}[[SIZES]]{{.+}}, {{.+}}[[TYPES]]{{.+}})
@@ -184,10 +184,10 @@ void implicit_maps_parameter (int a){
 #ifdef CK4
 
 // CK4-DAG: [[SIZES:@.+]] = {{.+}}constant [1 x i[[sz:64|32]]] [i{{64|32}} 4]
-// Map types: OMP_MAP_PRIVATE_VAL | OMP_MAP_IS_FIRST = 288
-// CK4-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 288]
+// Map types: OMP_MAP_PRIVATE_VAL | OMP_MAP_IS_FIRST | OMP_MAP_IMPLICIT = 800
+// CK4-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 800]
 
-// CK4-LABEL: implicit_maps_nested_integer
+// CK4-LABEL: implicit_maps_nested_integer{{.*}}(
 void implicit_maps_nested_integer (int a){
   int i = a;
 
@@ -240,10 +240,10 @@ void implicit_maps_nested_integer (int a){
 #ifdef CK5
 
 // CK5-DAG: [[SIZES:@.+]] = {{.+}}constant [1 x i[[sz:64|32]]] [i{{64|32}} 4]
-// Map types: OMP_MAP_PRIVATE_VAL | OMP_MAP_IS_FIRST = 288
-// CK5-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 288]
+// Map types: OMP_MAP_PRIVATE_VAL | OMP_MAP_IS_FIRST | OMP_MAP_IMPLICIT = 800
+// CK5-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 800]
 
-// CK5-LABEL: implicit_maps_nested_integer_and_enum
+// CK5-LABEL: implicit_maps_nested_integer_and_enum{{.*}}(
 void implicit_maps_nested_integer_and_enum (int a){
   enum Bla {
     SomeEnum = 0x09
@@ -291,10 +291,10 @@ void implicit_maps_nested_integer_and_enum (int a){
 #ifdef CK6
 // CK6-DAG: [[GBL:@Gi]] = global i32 0
 // CK6-DAG: [[SIZES:@.+]] = {{.+}}constant [1 x i[[sz:64|32]]] [i{{64|32}} 4]
-// Map types: OMP_MAP_PRIVATE_VAL | OMP_MAP_IS_FIRST = 288
-// CK6-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 288]
+// Map types: OMP_MAP_PRIVATE_VAL | OMP_MAP_IS_FIRST | OMP_MAP_IMPLICIT = 800
+// CK6-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 800]
 
-// CK6-LABEL: implicit_maps_host_global
+// CK6-LABEL: implicit_maps_host_global{{.*}}(
 int Gi;
 void implicit_maps_host_global (int a){
   // CK6-DAG: call i32 @__tgt_target(i32 {{.+}}, i8* {{.+}}, i32 1, i8** [[BPGEP:%[0-9]+]], i8** [[PGEP:%[0-9]+]], {{.+}}[[SIZES]]{{.+}}, {{.+}}[[TYPES]]{{.+}})
@@ -340,12 +340,12 @@ void implicit_maps_host_global (int a){
 // therefore it is passed by reference with a map 'to' specification.
 
 // CK7-DAG: [[SIZES:@.+]] = {{.+}}constant [1 x i[[sz:64|32]]] [i{{64|32}} 8]
-// Map types: OMP_MAP_PRIVATE_VAL | OMP_MAP_IS_FIRST = 288
-// CK7-64-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 288]
-// Map types: OMP_MAP_TO  | OMP_MAP_IS_FIRST = 33
-// CK7-32-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 33]
+// Map types: OMP_MAP_PRIVATE_VAL | OMP_MAP_IS_FIRST | OMP_MAP_IMPLICIT = 800
+// CK7-64-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 800]
+// Map types: OMP_MAP_TO  | OMP_MAP_IS_FIRST | OMP_MAP_IMPLICIT = 545
+// CK7-32-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 545]
 
-// CK7-LABEL: implicit_maps_double
+// CK7-LABEL: implicit_maps_double{{.*}}(
 void implicit_maps_double (int a){
   double d = (double)a;
 
@@ -399,10 +399,10 @@ void implicit_maps_double (int a){
 #ifdef CK8
 
 // CK8-DAG: [[SIZES:@.+]] = {{.+}}constant [1 x i[[sz:64|32]]] [i{{64|32}} 4]
-// Map types: OMP_MAP_PRIVATE_VAL | OMP_MAP_IS_FIRST = 288
-// CK8-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 288]
+// Map types: OMP_MAP_PRIVATE_VAL | OMP_MAP_IS_FIRST | OMP_MAP_IMPLICIT = 800
+// CK8-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 800]
 
-// CK8-LABEL: implicit_maps_float
+// CK8-LABEL: implicit_maps_float{{.*}}(
 void implicit_maps_float (int a){
   float f = (float)a;
 
@@ -443,10 +443,10 @@ void implicit_maps_float (int a){
 #ifdef CK9
 
 // CK9-DAG: [[SIZES:@.+]] = {{.+}}constant [1 x i[[sz:64|32]]] [i{{64|32}} 16]
-// Map types: OMP_MAP_TO + OMP_MAP_FROM + OMP_MAP_IS_FIRST = 35
-// CK9-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 35]
+// Map types: OMP_MAP_TO + OMP_MAP_FROM + OMP_MAP_IS_FIRST | OMP_MAP_IMPLICIT = 547
+// CK9-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 547]
 
-// CK9-LABEL: implicit_maps_array
+// CK9-LABEL: implicit_maps_array{{.*}}(
 void implicit_maps_array (int a){
   double darr[2] = {(double)a, (double)a};
 
@@ -484,10 +484,10 @@ void implicit_maps_array (int a){
 #ifdef CK10
 
 // CK10-DAG: [[SIZES:@.+]] = {{.+}}constant [1 x i[[sz:64|32]]] zeroinitializer
-// Map types: OMP_MAP_IS_FIRST = 32
-// CK10-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 32]
+// Map types: OMP_MAP_IS_FIRST | OMP_MAP_IMPLICIT = 544
+// CK10-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 544]
 
-// CK10-LABEL: implicit_maps_pointer
+// CK10-LABEL: implicit_maps_pointer{{.*}}(
 void implicit_maps_pointer (){
   double *ddyn;
 
@@ -526,10 +526,10 @@ void implicit_maps_pointer (){
 #ifdef CK11
 
 // CK11-DAG: [[SIZES:@.+]] = {{.+}}constant [1 x i[[sz:64|32]]] [i{{64|32}} 16]
-// Map types: OMP_MAP_TO + OMP_MAP_IS_FIRST = 33
-// CK11-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 33]
+// Map types: OMP_MAP_TO + OMP_MAP_IS_FIRST | OMP_MAP_IMPLICIT = 545
+// CK11-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 545]
 
-// CK11-LABEL: implicit_maps_double_complex
+// CK11-LABEL: implicit_maps_double_complex{{.*}}(
 void implicit_maps_double_complex (int a){
   double _Complex dc = (double)a;
 
@@ -569,12 +569,12 @@ void implicit_maps_double_complex (int a){
 // therefore it is passed by reference with a map 'to' specification.
 
 // CK12-DAG: [[SIZES:@.+]] = {{.+}}constant [1 x i[[sz:64|32]]] [i{{64|32}} 8]
-// Map types: OMP_MAP_PRIVATE_VAL + OMP_MAP_IS_FIRST = 288
-// CK12-64-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 288]
-// Map types: OMP_MAP_TO + OMP_MAP_IS_FIRST = 33
-// CK12-32-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 33]
+// Map types: OMP_MAP_PRIVATE_VAL + OMP_MAP_IS_FIRST | OMP_MAP_IMPLICIT = 800
+// CK12-64-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 800]
+// Map types: OMP_MAP_TO + OMP_MAP_IS_FIRST | OMP_MAP_IMPLICIT = 545
+// CK12-32-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 545]
 
-// CK12-LABEL: implicit_maps_float_complex
+// CK12-LABEL: implicit_maps_float_complex{{.*}}(
 void implicit_maps_float_complex (int a){
   float _Complex fc = (float)a;
 
@@ -630,10 +630,10 @@ void implicit_maps_float_complex (int a){
 // Map types:
 //  - OMP_MAP_PRIVATE_VAL + OMP_MAP_IS_FIRST = 288 (vla size)
 //  - OMP_MAP_PRIVATE_VAL + OMP_MAP_IS_FIRST = 288 (vla size)
-//  - OMP_MAP_TO + OMP_MAP_FROM + OMP_MAP_IS_FIRST = 35
-// CK13-DAG: [[TYPES:@.+]] = {{.+}}constant [3 x i32] [i32 288, i32 288, i32 35]
+//  - OMP_MAP_TO + OMP_MAP_FROM + OMP_MAP_IS_FIRST | OMP_MAP_IMPLICIT = 547
+// CK13-DAG: [[TYPES:@.+]] = {{.+}}constant [3 x i32] [i32 288, i32 288, i32 547]
 
-// CK13-LABEL: implicit_maps_variable_length_array
+// CK13-LABEL: implicit_maps_variable_length_array{{.*}}(
 void implicit_maps_variable_length_array (int a){
   double vla[2][a];
 
@@ -675,7 +675,7 @@ void implicit_maps_variable_length_array (int a){
   }
 }
 
-// CK13: define internal void [[KERNEL]](i[[sz]] [[VLA0:%.+]], i[[sz]] [[VLA1:%.+]], double* {{.+}}[[ARG:%.+]])
+// CK13: define internal void [[KERNEL]](i[[sz]] [[VLA0:%.+]], i[[sz]] [[VLA1:%.+]], double* {{.*}}[[ARG:%.+]])
 // CK13: [[ADDR0:%.+]] = alloca i[[sz]],
 // CK13: [[ADDR1:%.+]] = alloca i[[sz]],
 // CK13: [[ADDR2:%.+]] = alloca double*,
@@ -699,9 +699,9 @@ void implicit_maps_variable_length_array (int a){
 // CK14-DAG: [[ST:%.+]] = type { i32, double }
 // CK14-DAG: [[SIZES:@.+]] = {{.+}}constant [2 x i[[sz:64|32]]] [i{{64|32}} {{16|12}}, i{{64|32}} 4]
 // Map types:
-// - OMP_MAP_TO + OMP_MAP_FROM + OMP_MAP_IS_FIRST = 35
-// - OMP_MAP_PRIVATE_VAL + OMP_MAP_IS_FIRST = 288
-// CK14-DAG: [[TYPES:@.+]] = {{.+}}constant [2 x i32] [i32 35, i32 288]
+// - OMP_MAP_TO + OMP_MAP_FROM + OMP_MAP_IS_FIRST | OMP_MAP_IMPLICIT = 547
+// - OMP_MAP_PRIVATE_VAL + OMP_MAP_IS_FIRST | OMP_MAP_IMPLICIT = 800
+// CK14-DAG: [[TYPES:@.+]] = {{.+}}constant [2 x i32] [i32 547, i32 800]
 
 class SSS {
 public:
@@ -719,7 +719,7 @@ public:
   SSS(int a, double b) : a(a), b(b) {}
 };
 
-// CK14-LABEL: implicit_maps_class
+// CK14-LABEL: implicit_maps_class{{.*}}(
 void implicit_maps_class (int a){
   SSS sss(a, (double)a);
 
@@ -773,15 +773,15 @@ void implicit_maps_class (int a){
 // CK15: [[ST:%.+]] = type { i32, double, i32* }
 // CK15: [[SIZES:@.+]] = {{.+}}constant [2 x i[[sz:64|32]]] [i{{64|32}} {{24|16}}, i{{64|32}} 4]
 // Map types:
-// - OMP_MAP_TO + OMP_MAP_FROM + OMP_MAP_IS_FIRST = 35
-// - OMP_MAP_PRIVATE_VAL + OMP_MAP_IS_FIRST = 288
-// CK15: [[TYPES:@.+]] = {{.+}}constant [2 x i32] [i32 35, i32 288]
+// - OMP_MAP_TO + OMP_MAP_FROM + OMP_MAP_IS_FIRST | OMP_MAP_IMPLICIT = 547
+// - OMP_MAP_PRIVATE_VAL + OMP_MAP_IS_FIRST | OMP_MAP_IMPLICIT = 800
+// CK15: [[TYPES:@.+]] = {{.+}}constant [2 x i32] [i32 547, i32 800]
 
 // CK15: [[SIZES2:@.+]] = {{.+}}constant [2 x i[[sz]]] [i{{64|32}} {{24|16}}, i{{64|32}} 4]
 // Map types:
-// - OMP_MAP_TO + OMP_MAP_FROM + OMP_MAP_IS_FIRST = 35
-// - OMP_MAP_PRIVATE_VAL + OMP_MAP_IS_FIRST = 288
-// CK15: [[TYPES2:@.+]] = {{.+}}constant [2 x i32] [i32 35, i32 288]
+// - OMP_MAP_TO + OMP_MAP_FROM + OMP_MAP_IS_FIRST | OMP_MAP_IMPLICIT = 547
+// - OMP_MAP_PRIVATE_VAL + OMP_MAP_IS_FIRST | OMP_MAP_IMPLICIT = 800
+// CK15: [[TYPES2:@.+]] = {{.+}}constant [2 x i32] [i32 547, i32 800]
 
 template<int x>
 class SSST {
@@ -811,7 +811,7 @@ public:
   SSST(int a, double b, int &r) : a(a), b(b), r(r) {}
 };
 
-// CK15-LABEL: implicit_maps_templated_class
+// CK15-LABEL: implicit_maps_templated_class{{.*}}(
 void implicit_maps_templated_class (int a){
   SSST<123> ssst(a, (double)a, a);
 
@@ -900,8 +900,8 @@ void implicit_maps_templated_class (int a){
 
 // CK16-DAG: [[SIZES:@.+]] = {{.+}}constant [1 x i[[sz:64|32]]] [i{{64|32}} 4]
 // Map types:
-// - OMP_MAP_PRIVATE_VAL + OMP_MAP_IS_FIRST = 288
-// CK16-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 288]
+// - OMP_MAP_PRIVATE_VAL + OMP_MAP_IS_FIRST | OMP_MAP_IMPLICIT = 800
+// CK16-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 800]
 
 template<int y>
 int foo(int d) {
@@ -912,7 +912,7 @@ int foo(int d) {
   }
   return res;
 }
-// CK16-LABEL: implicit_maps_templated_function
+// CK16-LABEL: implicit_maps_templated_function{{.*}}(
 void implicit_maps_templated_function (int a){
   int i = a;
 
@@ -953,8 +953,8 @@ void implicit_maps_templated_function (int a){
 
 // CK17-DAG: [[ST:%.+]] = type { i32, double }
 // CK17-DAG: [[SIZES:@.+]] = {{.+}}constant [1 x i[[sz:64|32]]] [i{{64|32}} {{16|12}}]
-// Map types: OMP_MAP_TO + OMP_MAP_FROM + OMP_MAP_IS_FIRST = 35
-// CK17-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 35]
+// Map types: OMP_MAP_TO + OMP_MAP_FROM + OMP_MAP_IS_FIRST | OMP_MAP_IMPLICIT = 547
+// CK17-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 547]
 
 class SSS {
 public:
@@ -962,7 +962,7 @@ public:
   double b;
 };
 
-// CK17-LABEL: implicit_maps_struct
+// CK17-LABEL: implicit_maps_struct{{.*}}(
 void implicit_maps_struct (int a){
   SSS s = {a, (double)a};
 
@@ -1001,8 +1001,8 @@ void implicit_maps_struct (int a){
 
 // CK18-DAG: [[SIZES:@.+]] = {{.+}}constant [1 x i[[sz:64|32]]] [i{{64|32}} 4]
 // Map types:
-// - OMP_MAP_PRIVATE_VAL + OMP_MAP_IS_FIRST = 288
-// CK18-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 288]
+// - OMP_MAP_PRIVATE_VAL + OMP_MAP_IS_FIRST | OMP_MAP_IMPLICIT = 800
+// CK18-DAG: [[TYPES:@.+]] = {{.+}}constant [1 x i32] [i32 800]
 
 template<typename T>
 int foo(T d) {
@@ -1012,7 +1012,7 @@ int foo(T d) {
   }
   return d;
 }
-// CK18-LABEL: implicit_maps_template_type_capture
+// CK18-LABEL: implicit_maps_template_type_capture{{.*}}(
 void implicit_maps_template_type_capture (int a){
   int i = a;
 
@@ -1169,7 +1169,7 @@ void implicit_maps_template_type_capture (int a){
 
 // CK19: [[MTYPE43:@.+]] = private {{.*}}constant [1 x i32] [i32 35]
 
-// CK19-LABEL: explicit_maps_single
+// CK19-LABEL: explicit_maps_single{{.*}}(
 void explicit_maps_single (int ii){
   // Map of a scalar.
   int a = ii;
@@ -2438,7 +2438,7 @@ void explicit_maps_single (int ii){
 // CK20: [[SIZE03:@.+]] = private {{.*}}constant [1 x i[[Z]]] [i[[Z]] 12]
 // CK20: [[MTYPE03:@.+]] = private {{.*}}constant [1 x i32] [i32 34]
 
-// CK20-LABEL: explicit_maps_references_and_function_args
+// CK20-LABEL: explicit_maps_references_and_function_args{{.*}}(
 void explicit_maps_references_and_function_args (int a, float b, int (&c)[10], float *d){
 
   int &aa = a;
@@ -2561,7 +2561,7 @@ void explicit_maps_references_and_function_args (int a, float b, int (&c)[10], f
 // CK21: [[SIZE05:@.+]] = private {{.*}}constant [2 x i[[Z]]] [i[[Z]] 4, i[[Z]] 4]
 // CK21: [[MTYPE05:@.+]] = private {{.*}}constant [2 x i32] [i32 35, i32 3]
 
-// CK21-LABEL: explicit_maps_template_args_and_members
+// CK21-LABEL: explicit_maps_template_args_and_members{{.*}}(
 
 template <int X, typename T>
 struct CC {
@@ -2800,7 +2800,7 @@ STT<int> sta ;
 STT<int> stc[100];
 STT<int> *std;
 
-// CK22-LABEL: explicit_maps_globals
+// CK22-LABEL: explicit_maps_globals{{.*}}(
 int explicit_maps_globals(void){
   // Region 00
   // CK22-DAG: call i32 @__tgt_target(i32 {{[^,]+}}, i8* {{[^,]+}}, i32 1, i8** [[GEPBP:%.+]], i8** [[GEPP:%.+]], {{.+}}getelementptr {{.+}}[1 x i{{.+}}]* [[SIZE00]], {{.+}}getelementptr {{.+}}[1 x i{{.+}}]* [[MTYPE00]]{{.+}})
@@ -3072,7 +3072,7 @@ int explicit_maps_globals(void){
 // CK23: [[SIZE05:@.+]] = private {{.*}}constant [1 x i[[Z]]] [i[[Z]] 16]
 // CK23: [[MTYPE05:@.+]] = private {{.*}}constant [1 x i32] [i32 35]
 
-// CK23-LABEL: explicit_maps_inside_captured
+// CK23-LABEL: explicit_maps_inside_captured{{.*}}(
 int explicit_maps_inside_captured(int a){
   float b;
   float c[100];
@@ -3316,7 +3316,7 @@ struct SC{
 // CK24: [[SIZE24:@.+]] = private {{.*}}constant [4 x i[[Z]]] [i[[Z]] {{8|4}}, i[[Z]] {{8|4}}, i[[Z]] {{8|4}}, i[[Z]] 4]
 // CK24: [[MTYPE24:@.+]] = private {{.*}}constant [4 x i32] [i32 35, i32 19, i32 19, i32 19]
 
-// CK24-LABEL: explicit_maps_struct_fields
+// CK24-LABEL: explicit_maps_struct_fields{{.*}}(
 int explicit_maps_struct_fields(int a){
   SC s;
   SC *p;
@@ -4032,7 +4032,7 @@ int explicit_maps_struct_fields(int a){
 // CK25: [[SIZE01:@.+]] = private {{.*}}constant [1 x i[[Z]]] [i[[Z]] 4]
 // CK25: [[MTYPE01:@.+]] = private {{.*}}constant [1 x i32] [i32 33]
 
-// CK25-LABEL: explicit_maps_with_inner_lambda
+// CK25-LABEL: explicit_maps_with_inner_lambda{{.*}}(
 
 template <int X, typename T>
 struct CC {
@@ -4104,7 +4104,9 @@ int explicit_maps_with_inner_lambda(int a){
 // CK25: [[VAL1:%.+]] = load i32*, i32** [[VALADDR]],
 // CK25: [[VALADDR1:%.+]] = getelementptr inbounds [[CA01]], [[CA01]]* [[CA:%[^,]+]], i32 0, i32 0
 // CK25: store i32* [[VAL1]], i32** [[VALADDR1]],
-// CK25: call void {{.*}}[[LAMBDA]]{{.*}}([[CA01]]* [[CA]])
+// CK25: call void {{.*}}[[LAMBDA2:@.+]]{{.*}}([[CA01]]* [[CA]])
+
+// CK25: define {{.+}}[[LAMBDA2]]
 #endif
 ///==========================================================================///
 // RUN: %clang_cc1 -DCK26 -std=c++11 -verify -fopenmp -fopenmp-targets=powerpc64le-ibm-linux-gnu -x c++ -triple powerpc64le-unknown-unknown -emit-llvm %s -o - | FileCheck %s --check-prefix CK26 --check-prefix CK26-64
@@ -4117,18 +4119,18 @@ int explicit_maps_with_inner_lambda(int a){
 // CK26: [[ST:%.+]] = type { i32, float*, i32, float* }
 
 // CK26: [[SIZE00:@.+]] = private {{.*}}constant [2 x i[[Z:64|32]]] [i[[Z:64|32]] {{32|16}}, i[[Z:64|32]] 4]
-// CK26: [[MTYPE00:@.+]] = private {{.*}}constant [2 x i32] [i32 35, i32 35]
+// CK26: [[MTYPE00:@.+]] = private {{.*}}constant [2 x i32] [i32 547, i32 35]
 
 // CK26: [[SIZE01:@.+]] = private {{.*}}constant [2 x i[[Z]]] [i[[Z]] {{32|16}}, i[[Z]] 4]
-// CK26: [[MTYPE01:@.+]] = private {{.*}}constant [2 x i32] [i32 35, i32 35]
+// CK26: [[MTYPE01:@.+]] = private {{.*}}constant [2 x i32] [i32 547, i32 35]
 
 // CK26: [[SIZE02:@.+]] = private {{.*}}constant [2 x i[[Z]]] [i[[Z]] {{32|16}}, i[[Z]] 4]
-// CK26: [[MTYPE02:@.+]] = private {{.*}}constant [2 x i32] [i32 35, i32 35]
+// CK26: [[MTYPE02:@.+]] = private {{.*}}constant [2 x i32] [i32 547, i32 35]
 
 // CK26: [[SIZE03:@.+]] = private {{.*}}constant [2 x i[[Z]]] [i[[Z]] {{32|16}}, i[[Z]] 4]
-// CK26: [[MTYPE03:@.+]] = private {{.*}}constant [2 x i32] [i32 35, i32 35]
+// CK26: [[MTYPE03:@.+]] = private {{.*}}constant [2 x i32] [i32 547, i32 35]
 
-// CK26-LABEL: explicit_maps_with_private_class_members
+// CK26-LABEL: explicit_maps_with_private_class_members{{.*}}(
 
 struct CC {
   int fA;
@@ -4300,7 +4302,7 @@ int explicit_maps_with_private_class_members(){
 #ifdef CK27
 
 // CK27: [[SIZE00:@.+]] = private {{.*}}constant [1 x i[[Z:64|32]]] zeroinitializer
-// CK27: [[MTYPE00:@.+]] = private {{.*}}constant [1 x i32] [i32 32]
+// CK27: [[MTYPE00:@.+]] = private {{.*}}constant [1 x i32] [i32 544]
 
 // CK27: [[SIZE01:@.+]] = private {{.*}}constant [1 x i[[Z]]] zeroinitializer
 // CK27: [[MTYPE01:@.+]] = private {{.*}}constant [1 x i32] [i32 35]
@@ -4312,15 +4314,15 @@ int explicit_maps_with_private_class_members(){
 // CK27: [[MTYPE03:@.+]] = private {{.*}}constant [1 x i32] [i32 35]
 
 // CK27: [[SIZE05:@.+]] = private {{.*}}constant [1 x i[[Z]]] zeroinitializer
-// CK27: [[MTYPE05:@.+]] = private {{.*}}constant [1 x i32] [i32 32]
+// CK27: [[MTYPE05:@.+]] = private {{.*}}constant [1 x i32] [i32 544]
 
 // CK27: [[SIZE07:@.+]] = private {{.*}}constant [1 x i[[Z]]] [i[[Z]] 4]
-// CK27: [[MTYPE07:@.+]] = private {{.*}}constant [1 x i32] [i32 288]
+// CK27: [[MTYPE07:@.+]] = private {{.*}}constant [1 x i32] [i32 800]
 
 // CK27: [[SIZE09:@.+]] = private {{.*}}constant [1 x i[[Z]]] [i[[Z]] 40]
-// CK27: [[MTYPE09:@.+]] = private {{.*}}constant [1 x i32] [i32 161]
+// CK27: [[MTYPE09:@.+]] = private {{.*}}constant [1 x i32] [i32 673]
 
-// CK27-LABEL: zero_size_section_and_private_maps
+// CK27-LABEL: zero_size_section_and_private_maps{{.*}}(
 void zero_size_section_and_private_maps (int ii){
 
   // Map of a pointer.
@@ -4516,7 +4518,7 @@ void zero_size_section_and_private_maps (int ii){
 // CK28: [[SIZE01:@.+]] = private {{.*}}constant [1 x i[[Z]]] [i[[Z]] 400]
 // CK28: [[MTYPE01:@.+]] = private {{.*}}constant [1 x i32] [i32 35]
 
-// CK28-LABEL: explicit_maps_pointer_references
+// CK28-LABEL: explicit_maps_pointer_references{{.*}}(
 void explicit_maps_pointer_references (int *p){
   int *&a = p;
 
@@ -4596,7 +4598,7 @@ struct SSB{
   SSA *&pr;
   SSB(SSA *&pr) : pr(pr) {}
 
-  // CK29-LABEL: define {{.+}}foo
+  // CK29-LABEL: define {{.+}}foo{{.*}}(
   void foo() {
 
     // Region 00

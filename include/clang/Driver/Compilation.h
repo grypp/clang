@@ -71,7 +71,7 @@ class Compilation {
   /// architecture, and device offload kind.
   struct TCArgsKey final {
     const ToolChain *TC = nullptr;
-    const char *BoundArch = nullptr;
+    StringRef BoundArch;
     Action::OffloadKind DeviceOffloadKind = Action::OFK_None;
     bool operator<(const TCArgsKey &K) const {
       if (TC < K.TC)
@@ -83,7 +83,7 @@ class Compilation {
         return true;
       return false;
     }
-    TCArgsKey(const ToolChain *TC, const char *BoundArch,
+    TCArgsKey(const ToolChain *TC, StringRef BoundArch,
               Action::OffloadKind DeviceOffloadKind)
         : TC(TC), BoundArch(BoundArch), DeviceOffloadKind(DeviceOffloadKind) {}
   };
@@ -205,7 +205,7 @@ public:
   /// \param DeviceOffloadKind - The offload device kind that should be used in
   /// the translation, if any.
   const llvm::opt::DerivedArgList &
-  getArgsForToolChain(const ToolChain *TC, const char *BoundArch,
+  getArgsForToolChain(const ToolChain *TC, StringRef BoundArch,
                       Action::OffloadKind DeviceOffloadKind);
 
   /// addTempFile - Add a file to remove on exit, and returns its

@@ -66,6 +66,9 @@ int tmain(T argc, S **argv) {
 #pragma omp target
 #pragma omp teams distribute parallel for if(parallel : argc) if (argc) // expected-error {{no more 'if' clause is allowed}} expected-note {{previous clause with directive name modifier specified here}}
   for (i = 0; i < argc; ++i) foo();
+#pragma omp target
+#pragma omp teams distribute parallel for if(distribute : argc) // expected-error {{directive name modifier 'distribute' is not allowed for '#pragma omp teams distribute parallel for'}}
+  for (i = 0; i < argc; ++i) foo();
 
   return 0;
 }
@@ -128,6 +131,9 @@ int main(int argc, char **argv) {
   for (i = 0; i < argc; ++i) foo();
 #pragma omp target
 #pragma omp teams distribute parallel for if(parallel : argc) if (argc) // expected-error {{no more 'if' clause is allowed}} expected-note {{previous clause with directive name modifier specified here}}
+  for (i = 0; i < argc; ++i) foo();
+#pragma omp target
+#pragma omp teams distribute parallel for if(distribute : argc) // expected-error {{directive name modifier 'distribute' is not allowed for '#pragma omp teams distribute parallel for'}}
   for (i = 0; i < argc; ++i) foo();
 
   return tmain(argc, argv);

@@ -74,7 +74,8 @@ class Parser : public CodeCompletionHandler {
   // a statement).
   SourceLocation PrevTokLocation;
 
-  unsigned short ParenCount, BracketCount, BraceCount;
+  unsigned short ParenCount = 0, BracketCount = 0, BraceCount = 0;
+  unsigned short MisplacedModuleBeginCount = 0;
 
   /// Actions - These are the callbacks we invoke as we parse various constructs
   /// in the file.
@@ -173,6 +174,7 @@ class Parser : public CodeCompletionHandler {
   std::unique_ptr<PragmaHandler> MSSection;
   std::unique_ptr<PragmaHandler> MSRuntimeChecks;
   std::unique_ptr<PragmaHandler> MSIntrinsic;
+  std::unique_ptr<PragmaHandler> CUDAForceHostDeviceHandler;
   std::unique_ptr<PragmaHandler> OptimizeHandler;
   std::unique_ptr<PragmaHandler> LoopHintHandler;
   std::unique_ptr<PragmaHandler> UnrollHintHandler;
@@ -245,6 +247,11 @@ class Parser : public CodeCompletionHandler {
   bool ParsingInObjCContainer;
 
   bool SkipFunctionBodies;
+
+  /// The location of the expression statement that is being parsed right now.
+  /// Used to determine if an expression that is being parsed is a statement or
+  /// just a regular sub-expression.
+  SourceLocation ExprStatementTokLoc;
 
 public:
   Parser(Preprocessor &PP, Sema &Actions, bool SkipFunctionBodies);
@@ -877,8 +884,8 @@ public:
     StopAtCodeCompletion = 1 << 2 ///< Stop at code completion
   };
 
-  friend LLVM_CONSTEXPR SkipUntilFlags operator|(SkipUntilFlags L,
-                                                 SkipUntilFlags R) {
+  friend constexpr SkipUntilFlags operator|(SkipUntilFlags L,
+                                            SkipUntilFlags R) {
     return static_cast<SkipUntilFlags>(static_cast<unsigned>(L) |
                                        static_cast<unsigned>(R));
   }
@@ -1011,8 +1018,8 @@ private:
   /// (C++ [class.mem]p2).
   struct LateParsedDefaultArgument {
     explicit LateParsedDefaultArgument(Decl *P,
-                                       CachedTokens *Toks = nullptr)
-      : Param(P), Toks(Toks) { }
+                                       std::unique_ptr<CachedTokens> Toks = nullptr)
+      : Param(P), Toks(std::move(Toks)) { }
 
     /// Param - The parameter declaration for this parameter.
     Decl *Param;
@@ -1021,7 +1028,7 @@ private:
     /// argument expression, not including the '=' or the terminating
     /// ')' or ','. This will be NULL for parameters that have no
     /// default argument.
-    CachedTokens *Toks;
+    std::unique_ptr<CachedTokens> Toks;
   };
 
   /// LateParsedMethodDeclaration - A method declaration inside a class that
@@ -1522,8 +1529,6 @@ private:
                                       bool *MayBePseudoDestructor = nullptr,
                                       bool IsTypename = false,
                                       IdentifierInfo **LastII = nullptr);
-
-  void CheckForLParenAfterColonColon();
 
   //===--------------------------------------------------------------------===//
   // C++0x 5.1.2: Lambda expressions

@@ -146,6 +146,8 @@ llvm::StringRef Action::GetOffloadKindName(OffloadKind Kind) {
 
     // TODO: Add other programming models here.
   }
+
+  llvm_unreachable("invalid offload kind");
 }
 
 void InputAction::anchor() {}
@@ -156,8 +158,8 @@ InputAction::InputAction(const Arg &_Input, types::ID _Type)
 
 void BindArchAction::anchor() {}
 
-BindArchAction::BindArchAction(Action *Input, const char *_ArchName)
-    : Action(BindArchClass, Input), ArchName(_ArchName) {}
+BindArchAction::BindArchAction(Action *Input, llvm::StringRef ArchName)
+    : Action(BindArchClass, Input), ArchName(ArchName) {}
 
 void OffloadAction::anchor() {}
 

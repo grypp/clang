@@ -11,16 +11,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "CGOpenMPRuntime.h"
 #include "CGCXXABI.h"
 #include "CGCleanup.h"
+#include "CGOpenMPRuntime.h"
 #include "CodeGenFunction.h"
+#include "ConstantBuilder.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclTemplate.h"
-#include "clang/AST/StmtOpenMP.h"
 #include "clang/AST/EvaluatedExprVisitor.h"
+#include "clang/AST/StmtOpenMP.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/Bitcode/ReaderWriter.h"
+#include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalValue.h"
@@ -1022,18 +1023,19 @@ Address CGOpenMPRuntime::getOrCreateDefaultLocation(unsigned Flags) {
       DefaultOpenMPPSource =
           llvm::ConstantExpr::getBitCast(DefaultOpenMPPSource, CGM.Int8PtrTy);
     }
-    auto DefaultOpenMPLocation = new llvm::GlobalVariable(
-        CGM.getModule(), IdentTy, /*isConstant*/ true,
-        llvm::GlobalValue::PrivateLinkage, /*Initializer*/ nullptr);
-    DefaultOpenMPLocation->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
-    DefaultOpenMPLocation->setAlignment(Align.getQuantity());
 
-    llvm::Constant *Zero = llvm::ConstantInt::get(CGM.Int32Ty, 0, true);
-    llvm::Constant *Values[] = {Zero,
-                                llvm::ConstantInt::get(CGM.Int32Ty, Flags),
-                                Zero, Zero, DefaultOpenMPPSource};
-    llvm::Constant *Init = llvm::ConstantStruct::get(IdentTy, Values);
-    DefaultOpenMPLocation->setInitializer(Init);
+    ConstantInitBuilder builder(CGM);
+    auto fields = builder.beginStruct(IdentTy);
+    fields.addInt(CGM.Int32Ty, 0);
+    fields.addInt(CGM.Int32Ty, Flags);
+    fields.addInt(CGM.Int32Ty, 0);
+    fields.addInt(CGM.Int32Ty, 0);
+    fields.add(DefaultOpenMPPSource);
+    auto DefaultOpenMPLocation =
+      fields.finishAndCreateGlobal("", Align, /*isConstant*/ true,
+                                   llvm::GlobalValue::PrivateLinkage);
+    DefaultOpenMPLocation->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+
     OpenMPDefaultLocMap[Flags] = Entry = DefaultOpenMPLocation;
   }
   return Address(Entry, Align);
@@ -2915,7 +2917,7 @@ void CGOpenMPRuntime::OffloadEntriesInfoManagerTy::
                                              "code generation.");
   OffloadEntriesTargetRegion[DeviceID][FileID][ParentName][LineNum] =
       OffloadEntryInfoTargetRegion(Order, /*Addr=*/nullptr, /*ID=*/nullptr,
-                                   /*Flags=*/nullptr);
+                                   /*Flags=*/0u);
   ++OffloadingOrderedEntriesNum;
 }
 
@@ -2923,7 +2925,7 @@ void CGOpenMPRuntime::OffloadEntriesInfoManagerTy::
     registerTargetRegionEntryInfo(unsigned DeviceID, unsigned FileID,
                                   StringRef ParentName, unsigned LineNum,
                                   llvm::Constant *Addr, llvm::Constant *ID,
-                                  llvm::ConstantInt *Flags) {
+                                  uint64_t Flags) {
   // If we are emitting code for a target, the entry is already initialized,
   // only has to be registered.
   if (CGM.getLangOpts().OpenMPIsDevice) {
@@ -2981,15 +2983,14 @@ void CGOpenMPRuntime::OffloadEntriesInfoManagerTy::
                                              "only required for the device "
                                              "code generation.");
   OffloadEntriesDeviceGlobalVar[MangledName] = OffloadEntryInfoDeviceGlobalVar(
-      Order, /*Addr=*/nullptr, QualType(), /*Flags=*/nullptr);
+      Order, /*Addr=*/nullptr, QualType(), /*Flags=*/0u);
   ++OffloadingOrderedEntriesNum;
 }
 
 void CGOpenMPRuntime::OffloadEntriesInfoManagerTy::
     registerDeviceGlobalVarEntryInfo(StringRef MangledName,
                                      llvm::Constant *Addr, QualType Ty,
-                                     llvm::ConstantInt *Flags,
-                                     bool isExternallyVisible) {
+                                     uint64_t Flags, bool isExternallyVisible) {
   // If we are emitting code for a target, the entry is already initialized,
   // only has to be registered.
   if (CGM.getLangOpts().OpenMPIsDevice) {
@@ -3128,9 +3129,10 @@ CGOpenMPRuntime::createOffloadingBinaryDescriptorRegistration() {
       ".omp_offloading.entries_end");
 
   // Create all device images
-  llvm::SmallVector<llvm::Constant *, 4> DeviceImagesEntires;
   auto *DeviceImageTy = cast<llvm::StructType>(
       CGM.getTypes().ConvertTypeForMem(getTgtDeviceImageQTy()));
+  ConstantInitBuilder DeviceImagesBuilder(CGM);
+  auto DeviceImagesEntries = DeviceImagesBuilder.beginArray(DeviceImageTy);
 
   for (unsigned i = 0; i < Devices.size(); ++i) {
     StringRef T = Devices[i].getTriple();
@@ -3142,22 +3144,19 @@ CGOpenMPRuntime::createOffloadingBinaryDescriptorRegistration() {
         M, CGM.Int8Ty, /*isConstant=*/true, llvm::GlobalValue::ExternalLinkage,
         /*Initializer=*/nullptr, Twine(".omp_offloading.img_end.") + Twine(T));
 
-    llvm::Constant *Dev =
-        llvm::ConstantStruct::get(DeviceImageTy, ImgBegin, ImgEnd,
-                                  HostEntriesBegin, HostEntriesEnd, nullptr);
-    DeviceImagesEntires.push_back(Dev);
+    auto Dev = DeviceImagesEntries.beginStruct(DeviceImageTy);
+    Dev.add(ImgBegin);
+    Dev.add(ImgEnd);
+    Dev.add(HostEntriesBegin);
+    Dev.add(HostEntriesEnd);
+    Dev.finishAndAddTo(DeviceImagesEntries);
   }
 
   // Create device images global array.
-  llvm::ArrayType *DeviceImagesInitTy =
-      llvm::ArrayType::get(DeviceImageTy, DeviceImagesEntires.size());
-  llvm::Constant *DeviceImagesInit =
-      llvm::ConstantArray::get(DeviceImagesInitTy, DeviceImagesEntires);
-
-  llvm::GlobalVariable *DeviceImages = new llvm::GlobalVariable(
-      M, DeviceImagesInitTy, /*isConstant=*/true,
-      llvm::GlobalValue::InternalLinkage, DeviceImagesInit,
-      ".omp_offloading.device_images");
+  llvm::GlobalVariable *DeviceImages =
+    DeviceImagesEntries.finishAndCreateGlobal(".omp_offloading.device_images",
+                                              CGM.getPointerAlign(),
+                                              /*isConstant=*/true);
   DeviceImages->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
 
   // This is a Zero array to be used in the creation of the constant expressions
@@ -3167,16 +3166,18 @@ CGOpenMPRuntime::createOffloadingBinaryDescriptorRegistration() {
   // Create the target region descriptor.
   auto *BinaryDescriptorTy = cast<llvm::StructType>(
       CGM.getTypes().ConvertTypeForMem(getTgtBinaryDescriptorQTy()));
-  llvm::Constant *TargetRegionsDescriptorInit = llvm::ConstantStruct::get(
-      BinaryDescriptorTy, llvm::ConstantInt::get(CGM.Int32Ty, Devices.size()),
-      llvm::ConstantExpr::getGetElementPtr(DeviceImagesInitTy, DeviceImages,
-                                           Index),
-      HostEntriesBegin, HostEntriesEnd, nullptr);
+  ConstantInitBuilder DescBuilder(CGM);
+  auto DescInit = DescBuilder.beginStruct(BinaryDescriptorTy);
+  DescInit.addInt(CGM.Int32Ty, Devices.size());
+  DescInit.add(llvm::ConstantExpr::getGetElementPtr(DeviceImages->getValueType(),
+                                                    DeviceImages,
+                                                    Index));
+  DescInit.add(HostEntriesBegin);
+  DescInit.add(HostEntriesEnd);
 
-  auto *Desc = new llvm::GlobalVariable(
-      M, BinaryDescriptorTy, /*isConstant=*/true,
-      llvm::GlobalValue::InternalLinkage, TargetRegionsDescriptorInit,
-      ".omp_offloading.descriptor");
+  auto *Desc = DescInit.finishAndCreateGlobal(".omp_offloading.descriptor",
+                                              CGM.getPointerAlign(),
+                                              /*isConstant=*/true);
 
   // Emit code to register or unregister the descriptor at execution
   // startup or closing, respectively.
@@ -3205,7 +3206,7 @@ CGOpenMPRuntime::createOffloadingBinaryDescriptorRegistration() {
 
 void CGOpenMPRuntime::createOffloadEntry(llvm::Constant *ID,
                                          llvm::Constant *Addr, uint64_t Size,
-                                         llvm::ConstantInt *Flags) {
+                                         uint64_t Flags) {
   StringRef Name = Addr->getName();
   auto *TgtOffloadEntryType = cast<llvm::StructType>(
       CGM.getTypes().ConvertTypeForMem(getTgtOffloadEntryQTy()));
@@ -3225,27 +3226,36 @@ void CGOpenMPRuntime::createOffloadEntry(llvm::Constant *ID,
   Str->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
   llvm::Constant *StrPtr = llvm::ConstantExpr::getBitCast(Str, CGM.Int8PtrTy);
 
-  // Create the entry struct. Its name has to be unique, so we append the name
-  // of the related function or global to make sure that happen.
-  llvm::Constant *EntryInit = llvm::ConstantStruct::get(
-      TgtOffloadEntryType, AddrPtr, StrPtr,
-      llvm::ConstantInt::get(CGM.SizeTy, Size),
-      Flags ? Flags : llvm::Constant::getNullValue(CGM.Int32Ty),
-      llvm::Constant::getNullValue(CGM.Int32Ty), nullptr);
-  llvm::GlobalVariable *Entry = new llvm::GlobalVariable(
-      M, TgtOffloadEntryType, true, llvm::GlobalValue::ExternalLinkage,
-      EntryInit, Twine(".omp_offloading.entry.") + Name);
+  // Decide linkage type of the entry struct by looking at the linkage type of
+  // the variable. By default the linkage is Link-Once.
+  auto EntryLinkage = llvm::GlobalValue::WeakAnyLinkage;
+
+  // We can't have any padding between symbols, so we need to have 1-byte
+  // alignment.
+  auto Align = CharUnits::fromQuantity(1);
+
+  // Create the entry struct.
+  ConstantInitBuilder EntryBuilder(CGM);
+  auto EntryInit = EntryBuilder.beginStruct(TgtOffloadEntryType);
+  EntryInit.add(AddrPtr);
+  EntryInit.add(StrPtr);
+  EntryInit.addInt(CGM.SizeTy, Size);
+  EntryInit.addInt(CGM.Int32Ty, Flags);
+  EntryInit.addInt(CGM.Int32Ty, 0);
+  SmallString<128> EntryGblName(".omp_offloading.entry.");
+  EntryGblName += Name;
+  llvm::GlobalVariable *Entry =
+      EntryInit.finishAndCreateGlobal(EntryGblName, Align,
+                                      /*constant*/ true, EntryLinkage);
 
   // The entry has to be created in the section the linker expects it to be.
   Entry->setSection(".omp_offloading.entries");
-  // We can't have any padding between symbols, so we need to have 1-byte
-  // alignment.
-  Entry->setAlignment(1);
 }
 
 void CGOpenMPRuntime::createOffloadEntriesAndInfoMetadata() {
   // Emit the offloading entries and metadata so that the device codegen side
-  // can easily figure out what to emit. The produced metadata looks like this:
+  // can easily figure out what to emit. The produced metadata looks like
+  // this:
   //
   // !omp_offload.info = !{!1, ...}
   //
@@ -3361,7 +3371,7 @@ void CGOpenMPRuntime::createOffloadEntriesAndInfoMetadata() {
                                        OffloadEntryInfoDeviceGlobalVar>(E)) {
       assert(CE->getAddress() && "Entry Addr is invalid!");
       // The global address can be used as ID.
-      if (!CE->getOnlyMetadataFlag()){
+      if (!CE->getOnlyMetadataFlag()) {
         createOffloadEntry(
             CE->getAddress(), CE->getAddress(),
             CGM.getContext().getTypeSizeInChars(CE->getType()).getQuantity(),
@@ -3389,7 +3399,8 @@ void CGOpenMPRuntime::loadOffloadInfoMetadata() {
     return;
 
   llvm::LLVMContext C;
-  auto ME = llvm::parseBitcodeFile(Buf.get()->getMemBufferRef(), C);
+  auto ME = expectedToErrorOrAndEmitErrors(
+      C, llvm::parseBitcodeFile(Buf.get()->getMemBufferRef(), C));
 
   if (ME.getError())
     return;
@@ -5214,10 +5225,10 @@ void CGOpenMPRuntime::emitTargetOutlinedFunctionHelper(
   bool UseCapturedArgumentsOnly =
       isOpenMPParallelDirective(D.getDirectiveKind()) ||
       isOpenMPTeamsDirective(D.getDirectiveKind());
-  OutlinedFn =
-      CGF.GenerateOpenMPCapturedStmtFunction(CS, UseCapturedArgumentsOnly,
-          /*CaptureLevel=*/ 1, /*ImplicitParamStop=*/ 0,
-          CGM.getLangOpts().OpenMPNonAliasedMaps);
+  OutlinedFn = CGF.GenerateOpenMPCapturedStmtFunction(
+      CS, UseCapturedArgumentsOnly,
+      /*CaptureLevel=*/1, /*ImplicitParamStop=*/0,
+      CGM.getLangOpts().OpenMPNonAliasedMaps);
 
   // If this target outline function is not an offload entry, we don't need to
   // register it.
@@ -5237,17 +5248,18 @@ void CGOpenMPRuntime::emitTargetOutlinedFunctionHelper(
 
   if (CGM.getLangOpts().OpenMPIsDevice) {
     OutlinedFnID = llvm::ConstantExpr::getBitCast(OutlinedFn, CGM.Int8PtrTy);
-    OutlinedFn->setLinkage(llvm::GlobalValue::ExternalLinkage);
+    OutlinedFn->setLinkage(llvm::GlobalValue::WeakAnyLinkage);
   } else
     OutlinedFnID = new llvm::GlobalVariable(
         CGM.getModule(), CGM.Int8Ty, /*isConstant=*/true,
-        llvm::GlobalValue::PrivateLinkage,
-        llvm::Constant::getNullValue(CGM.Int8Ty), ".omp_offload.region_id");
+        llvm::GlobalValue::WeakAnyLinkage,
+        llvm::Constant::getNullValue(CGM.Int8Ty),
+        Twine(EntryFnName) + ".region_id");
 
   // Register the information for the entry associated with this target region.
   OffloadEntriesInfoManager.registerTargetRegionEntryInfo(
       DeviceID, FileID, ParentName, Line, OutlinedFn, OutlinedFnID,
-      /*Flags=*/nullptr);
+      /*Flags=*/0u);
 }
 
 /// discard all CompoundStmts intervening between two constructs
@@ -5527,6 +5539,8 @@ public:
     OMP_MAP_PRIVATE_PTR = 0x80,
     /// \brief Pass the element to the device by value.
     OMP_MAP_PRIVATE_VAL = 0x100,
+    /// \brief States the map is implicit.
+    OMP_MAP_IMPLICIT = 0x200,
   };
 
   /// Class that associates information with a base pointer to be passed to the
@@ -6252,6 +6266,9 @@ public:
     // Every default map produces a single argument, so, it is always the
     // first one.
     CurMapTypes.back() |= OMP_MAP_FIRST_REF;
+
+    // Add flag stating this is an implicit map.
+    CurMapTypes.back() |= OMP_MAP_IMPLICIT;
   }
 };
 
@@ -6963,8 +6980,7 @@ void CGOpenMPRuntime::registerCtorDtorEntry(unsigned DeviceID, unsigned FileID,
                                             llvm::Function *Fn, bool IsDtor) {
   OffloadEntriesInfoManager.registerTargetRegionEntryInfo(
       DeviceID, FileID, RegionName, Line, Fn, Fn,
-      llvm::ConstantInt::get(CGM.Int32Ty, IsDtor ? OMP_DECLARE_TARGET_DTOR
-                                                 : OMP_DECLARE_TARGET_CTOR));
+      IsDtor ? OMP_DECLARE_TARGET_DTOR : OMP_DECLARE_TARGET_CTOR);
 }
 
 bool CGOpenMPRuntime::emitDeviceCtorDtor(const VarDecl &D,
@@ -7173,7 +7189,7 @@ llvm::Function *CGOpenMPRuntime::emitRegistrationFunction() {
         // region.
         OffloadEntriesInfoManager.registerTargetRegionEntryInfo(
             DeviceID, FileID, ParentName, Line, ID, ID,
-            llvm::ConstantInt::get(CGM.Int32Ty, OMP_DECLARE_TARGET_CTOR));
+            OMP_DECLARE_TARGET_CTOR);
       }
 
       // Produce an ID whose address uniquely identifies the target dtor.
@@ -7194,8 +7210,7 @@ llvm::Function *CGOpenMPRuntime::emitRegistrationFunction() {
       // target
       // region.
       OffloadEntriesInfoManager.registerTargetRegionEntryInfo(
-          DeviceID, FileID, ParentName, Line, ID, ID,
-          llvm::ConstantInt::get(CGM.Int32Ty, OMP_DECLARE_TARGET_DTOR));
+          DeviceID, FileID, ParentName, Line, ID, ID, OMP_DECLARE_TARGET_DTOR);
     };
 
     // If we have a variable, register it and register any ctors/dtors entries.
@@ -7210,8 +7225,7 @@ llvm::Function *CGOpenMPRuntime::emitRegistrationFunction() {
 
         // Register the variable as declare target.
         OffloadEntriesInfoManager.registerDeviceGlobalVarEntryInfo(
-            II->first(), Info.VariableAddr, D->getType(),
-            llvm::ConstantInt::get(CGM.Int32Ty, Flags),
+            II->first(), Info.VariableAddr, D->getType(), Flags,
             D->isExternallyVisible());
 
         // Emit the ctor/dtor launching if required.
@@ -7561,7 +7575,7 @@ static unsigned evaluateCDTSize(const FunctionDecl *FD,
 
 static void
 emitX86DeclareSimdFunction(const FunctionDecl *FD, llvm::Function *Fn,
-                           llvm::APSInt VLENVal,
+                           const llvm::APSInt &VLENVal,
                            ArrayRef<ParamAttrTy> ParamAttrs,
                            OMPDeclareSimdDeclAttr::BranchStateTy State) {
   struct ISADataTy {

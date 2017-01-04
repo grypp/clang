@@ -21,7 +21,7 @@
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendDiagnostic.h"
 #include "clang/Lex/Preprocessor.h"
-#include "llvm/Bitcode/ReaderWriter.h"
+#include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/DiagnosticPrinter.h"
@@ -33,6 +33,8 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/Timer.h"
+#include "llvm/Support/ToolOutputFile.h"
+#include "llvm/Support/YAMLTraits.h"
 #include <memory>
 using namespace clang;
 using namespace llvm;
@@ -50,6 +52,11 @@ namespace clang {
 
     Timer LLVMIRGeneration;
     unsigned LLVMIRGenerationRefCount;
+
+    /// True if we've finished generating IR. This prevents us from generating
+    /// additional LLVM IR after emitting output in HandleTranslationUnit. This
+    /// can happen when Clang plugins trigger additional AST deserialization.
+    bool IRGenFinished = false;
 
     std::unique_ptr<CodeGenerator> Gen;
 
@@ -73,7 +80,7 @@ namespace clang {
         : Diags(Diags), Action(Action), CodeGenOpts(CodeGenOpts),
           TargetOpts(TargetOpts), LangOpts(LangOpts),
           AsmOutStream(std::move(OS)), Context(nullptr),
-          LLVMIRGeneration("LLVM IR Generation Time"),
+          LLVMIRGeneration("irgen", "LLVM IR Generation Time"),
           LLVMIRGenerationRefCount(0),
           Gen(CreateLLVMCodeGen(Diags, InFile, HeaderSearchOpts, PPOpts,
                                 CodeGenOpts, C, CoverageInfo)) {
@@ -145,6 +152,12 @@ namespace clang {
         LLVMIRGeneration.stopTimer();
     }
 
+    void HandleInterestingDecl(DeclGroupRef D) override {
+      // Ignore interesting decls from the AST reader after IRGen is finished.
+      if (!IRGenFinished)
+        HandleTopLevelDecl(D);
+    }
+
     void HandleTranslationUnit(ASTContext &C) override {
       {
         PrettyStackTraceString CrashInfo("Per-file LLVM IR generation");
@@ -161,6 +174,8 @@ namespace clang {
           if (LLVMIRGenerationRefCount == 0)
             LLVMIRGeneration.stopTimer();
         }
+
+	IRGenFinished = true;
       }
 
       // Silently ignore if we weren't initialized for some reason.
@@ -181,6 +196,25 @@ namespace clang {
       Ctx.setDiagnosticHandler(DiagnosticHandler, this);
       Ctx.setDiagnosticHotnessRequested(CodeGenOpts.DiagnosticsWithHotness);
 
+      std::unique_ptr<llvm::tool_output_file> OptRecordFile;
+      if (!CodeGenOpts.OptRecordFile.empty()) {
+        std::error_code EC;
+        OptRecordFile =
+          llvm::make_unique<llvm::tool_output_file>(CodeGenOpts.OptRecordFile,
+                                                    EC, sys::fs::F_None);
+        if (EC) {
+          Diags.Report(diag::err_cannot_open_file) <<
+            CodeGenOpts.OptRecordFile << EC.message();
+          return;
+        }
+
+        Ctx.setDiagnosticsOutputFile(
+            llvm::make_unique<yaml::Output>(OptRecordFile->os()));
+
+        if (CodeGenOpts.getProfileUse() != CodeGenOptions::ProfileNone)
+          Ctx.setDiagnosticHotnessRequested(true);
+      }
+
       // Link LinkModule into this module if present, preserving its validity.
       for (auto &I : LinkModules) {
         unsigned LinkFlags = I.first;
@@ -198,6 +232,9 @@ namespace clang {
       Ctx.setInlineAsmDiagnosticHandler(OldHandler, OldContext);
 
       Ctx.setDiagnosticHandler(OldDiagnosticHandler, OldDiagnosticContext);
+
+      if (OptRecordFile)
+        OptRecordFile->keep();
     }
 
     void HandleTagDeclDefinition(TagDecl *D) override {
@@ -517,7 +554,7 @@ void BackendConsumer::EmitOptimizationMessage(
     MsgStream << " (hotness: " << *D.getHotness() << ")";
 
   Diags.Report(Loc, DiagID)
-      << AddFlagValue(D.getPassName() ? D.getPassName() : "")
+      << AddFlagValue(D.getPassName())
       << MsgStream.str();
 
   if (BadDebugInfo)
@@ -748,11 +785,13 @@ CodeGenAction::CreateASTConsumer(CompilerInstance &CI, StringRef InFile) {
         return nullptr;
       }
 
-      ErrorOr<std::unique_ptr<llvm::Module>> ModuleOrErr =
-          getLazyBitcodeModule(std::move(*BCBuf), *VMContext);
-      if (std::error_code EC = ModuleOrErr.getError()) {
-        CI.getDiagnostics().Report(diag::err_cannot_open_file) << LinkBCFile
-                                                               << EC.message();
+      Expected<std::unique_ptr<llvm::Module>> ModuleOrErr =
+          getOwningLazyBitcodeModule(std::move(*BCBuf), *VMContext);
+      if (!ModuleOrErr) {
+        handleAllErrors(ModuleOrErr.takeError(), [&](ErrorInfoBase &EIB) {
+          CI.getDiagnostics().Report(diag::err_cannot_open_file)
+              << LinkBCFile << EIB.message();
+        });
         LinkModules.clear();
         return nullptr;
       }

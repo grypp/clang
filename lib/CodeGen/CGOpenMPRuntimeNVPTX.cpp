@@ -1045,7 +1045,7 @@ static void SetPropertyExecutionMode(CodeGenModule &CGM, StringRef Name,
                                      CGOpenMPRuntimeNVPTX::ExecutionMode Mode) {
   (void)new llvm::GlobalVariable(
       CGM.getModule(), CGM.Int8Ty, /*isConstant=*/true,
-      llvm::GlobalValue::ExternalLinkage,
+      llvm::GlobalValue::WeakAnyLinkage,
       llvm::ConstantInt::get(CGM.Int8Ty, Mode), Name + Twine("_exec_mode"));
 }
 
@@ -1442,8 +1442,7 @@ void CGOpenMPRuntimeNVPTX::registerParallelContext(
 
 void CGOpenMPRuntimeNVPTX::createOffloadEntry(llvm::Constant *ID,
                                               llvm::Constant *Addr,
-                                              uint64_t Size,
-                                              llvm::ConstantInt *Flags) {
+                                              uint64_t Size, uint64_t Flags) {
   auto *F = dyn_cast<llvm::Function>(Addr);
   // TODO: Add support for global variables on the device after declare target
   // support.
@@ -2275,17 +2274,23 @@ void CGOpenMPRuntimeNVPTX::createDataSharingInfo(CodeGenFunction &CGF) {
               cast<DeclRefExpr>(OD->getInit()->IgnoreImpCasts())->getDecl());
 
         // If the variable does not have local storage it is always a reference.
-        if (!OrigVD->hasLocalStorage()) {
+        if (!OrigVD->hasLocalStorage())
           DST = DataSharingInfo::DST_Ref;
-        } else {
+        else {
           // If we have an alloca for this variable, then we need to share the
           // storage too, not only the reference.
           auto *Val = cast<llvm::Instruction>(
               CGF.GetAddrOfLocalVar(OrigVD).getPointer());
           if (isa<llvm::LoadInst>(Val))
             DST = DataSharingInfo::DST_Ref;
+          // If the variable is a bitcast, it is being encoded in a pointer
+          // and should be treated as such.
           else if (isa<llvm::BitCastInst>(Val))
             DST = DataSharingInfo::DST_Cast;
+          // If the variable is a reference, we also share it as is,
+          // i.e., consider it a reference to something that can be shared.
+          else if (OrigVD->getType()->isReferenceType())
+            DST = DataSharingInfo::DST_Ref;
         }
       }
 
@@ -2308,43 +2313,43 @@ void CGOpenMPRuntimeNVPTX::createDataSharingInfo(CodeGenFunction &CGF) {
     }
 
     // Add loop bounds if required.
-    DoOnSharedLoopBounds(
-        *Dir, [&AlreadySharedDecls, &C, &Info, &SharedMasterRD, &SharedWarpRD,
-               &Dir, &CGF](const VarDecl *LB, const VarDecl *UB) {
-          // Do not insert the same declaration twice.
-          if (AlreadySharedDecls.count(LB))
-            return;
+    DoOnSharedLoopBounds(*Dir, [&AlreadySharedDecls, &C, &Info, &SharedMasterRD,
+                                &SharedWarpRD, &Dir,
+                                &CGF](const VarDecl *LB, const VarDecl *UB) {
+      // Do not insert the same declaration twice.
+      if (AlreadySharedDecls.count(LB))
+        return;
 
-          // We assume that if the lower bound is not to be shared, the upper
-          // bound is not shared as well.
-          assert(!AlreadySharedDecls.count(UB) &&
-                 "Not expecting shared upper bound.");
+      // We assume that if the lower bound is not to be shared, the upper
+      // bound is not shared as well.
+      assert(!AlreadySharedDecls.count(UB) &&
+             "Not expecting shared upper bound.");
 
-          QualType ElemTy = LB->getType();
+      QualType ElemTy = LB->getType();
 
-          // Bounds are shared by value.
-          Info.add(LB, DataSharingInfo::DST_Val);
-          Info.add(UB, DataSharingInfo::DST_Val);
-          addFieldToRecordDecl(C, SharedMasterRD, ElemTy);
-          addFieldToRecordDecl(C, SharedMasterRD, ElemTy);
+      // Bounds are shared by value.
+      Info.add(LB, DataSharingInfo::DST_Val);
+      Info.add(UB, DataSharingInfo::DST_Val);
+      addFieldToRecordDecl(C, SharedMasterRD, ElemTy);
+      addFieldToRecordDecl(C, SharedMasterRD, ElemTy);
 
-          llvm::APInt NumElems(C.getTypeSize(C.getUIntPtrType()),
-                               DS_Max_Worker_Warp_Size);
-          auto QTy = C.getConstantArrayType(ElemTy, NumElems, ArrayType::Normal,
-                                            /*IndexTypeQuals=*/0);
-          addFieldToRecordDecl(C, SharedWarpRD, QTy);
-          addFieldToRecordDecl(C, SharedWarpRD, QTy);
+      llvm::APInt NumElems(C.getTypeSize(C.getUIntPtrType()),
+                           DS_Max_Worker_Warp_Size);
+      auto QTy = C.getConstantArrayType(ElemTy, NumElems, ArrayType::Normal,
+                                        /*IndexTypeQuals=*/0);
+      addFieldToRecordDecl(C, SharedWarpRD, QTy);
+      addFieldToRecordDecl(C, SharedWarpRD, QTy);
 
-          // Emit the preinits to make sure the initializers are properly
-          // emitted.
-          // FIXME: This is a hack - it won't work if declarations being shared
-          // appear after the first parallel region.
-          const OMPLoopDirective *L = cast<OMPLoopDirective>(Dir);
-          if (auto *PreInits = cast_or_null<DeclStmt>(L->getPreInits()))
-            for (const auto *I : PreInits->decls()) {
-              CGF.EmitOMPHelperVar(cast<VarDecl>(I));
-            }
-        });
+      // Emit the preinits to make sure the initializers are properly
+      // emitted.
+      // FIXME: This is a hack - it won't work if declarations being shared
+      // appear after the first parallel region.
+      const OMPLoopDirective *L = cast<OMPLoopDirective>(Dir);
+      if (auto *PreInits = cast_or_null<DeclStmt>(L->getPreInits()))
+        for (const auto *I : PreInits->decls()) {
+          CGF.EmitOMPHelperVar(cast<VarDecl>(I));
+        }
+    });
   }
 
   SharedMasterRD->completeDefinition();
@@ -2684,7 +2689,8 @@ void CGOpenMPRuntimeNVPTX::createDataSharingPerFunctionInfrastructure(
     if (const VarDecl *VD = DSI.CapturesValues[i].first) {
       DeclRefExpr DRE(const_cast<VarDecl *>(VD),
                       /*RefersToEnclosingVariableOrCapture=*/false,
-                      VD->getType(), VK_LValue, SourceLocation());
+                      VD->getType().getNonReferenceType(), VK_LValue,
+                      SourceLocation());
       Address OriginalAddr = EnclosingCGF.EmitOMPHelperVar(&DRE).getAddress();
       OriginalVal = OriginalAddr.getPointer();
     } else
@@ -2954,9 +2960,10 @@ llvm::Function *CGOpenMPRuntimeNVPTX::createDataSharingParallelWrapper(
     }
   });
 
+  auto CapInfo = DSI.CapturesValues.begin();
   auto FI = DSI.MasterRecordType->getAs<RecordType>()->getDecl()->field_begin();
   auto CI = CS.capture_begin();
-  for (unsigned i = 0; i < CS.capture_size(); ++i, ++FI, ++CI) {
+  for (unsigned i = 0; i < CS.capture_size(); ++i, ++FI, ++CI, ++CapInfo) {
     auto *Arg = CGF.EmitLoadOfScalar(ArgsAddresses[i], /*Volatile=*/false,
                                      Ctx.getPointerType(FI->getType()),
                                      SourceLocation());
@@ -2964,10 +2971,19 @@ llvm::Function *CGOpenMPRuntimeNVPTX::createDataSharingParallelWrapper(
     // If this is a capture by value, we need to load the data. Additionally, if
     // its not a pointer we may need to cast it to uintptr.
     if (CI->capturesVariableByCopy()) {
-      auto LV = CGF.MakeNaturalAlignAddrLValue(Arg, FI->getType());
+      auto *CapturedVar = CI->getCapturedVar();
+      auto CapturedTy = FI->getType();
+      auto LV = CGF.MakeNaturalAlignAddrLValue(Arg, CapturedTy);
 
-      auto CastLV = castValueToUintptr(CGF, FI->getType(),
-                                       CI->getCapturedVar()->getName(), LV);
+      // If this is a value captured by reference in the outermost scope, we
+      // have to load the address first.
+      assert(CapInfo->first == CapturedVar &&
+             "Using info of wrong declaration.");
+      if (CapInfo->second == DataSharingInfo::DST_Ref)
+        CapturedTy = CapturedVar->getType();
+
+      auto CastLV =
+          castValueToUintptr(CGF, CapturedTy, CapturedVar->getName(), LV);
 
       Arg = CGF.EmitLoadOfScalar(CastLV, SourceLocation());
     }
@@ -3638,6 +3654,7 @@ llvm::Function *CGOpenMPRuntimeNVPTX::emitRegistrationFunction() {
     // Find the last alloca and the last replacement that is not an alloca.
     llvm::Instruction *LastAlloca = nullptr;
     llvm::Instruction *LastNonAllocaReplacement = nullptr;
+    llvm::Instruction *LastNonAllocaNonRefReplacement = nullptr;
 
     for (auto &I : HeaderBB) {
       if (isa<llvm::AllocaInst>(I)) {
@@ -3652,6 +3669,9 @@ llvm::Function *CGOpenMPRuntimeNVPTX::emitRegistrationFunction() {
         continue;
 
       LastNonAllocaReplacement = cast<llvm::Instruction>(It->first);
+
+      if (!It->second)
+        LastNonAllocaNonRefReplacement = LastNonAllocaReplacement;
     }
 
     // We will start inserting after the first alloca or at the beginning of the
@@ -3730,6 +3750,11 @@ llvm::Function *CGOpenMPRuntimeNVPTX::emitRegistrationFunction() {
       InitArgs.push_back(Replacement);
     }
 
+    // Save the insertion point of the initialization call.
+    auto InitializationInsertPtr = InsertPtr;
+    if (LastNonAllocaNonRefReplacement)
+      InitializationInsertPtr = LastNonAllocaNonRefReplacement->getNextNode();
+
     // We now need to insert the sharing calls. We insert after the last value
     // to be replaced or after the alloca.
     if (LastNonAllocaReplacement)
@@ -3773,13 +3798,31 @@ llvm::Function *CGOpenMPRuntimeNVPTX::emitRegistrationFunction() {
       InsertPtr = To;
     }
 
+    // Move the initialization insert point if it is before the the current
+    // initialization insert point.
+    for (auto *I = InsertPtr; I; I = I->getNextNode())
+      if (I == InitializationInsertPtr) {
+        InitializationInsertPtr = InsertPtr;
+        break;
+      }
+
     // If this is an entry point, we have to initialize the data sharing first.
     if (DSI.IsEntryPoint)
-      InitializeEntryPoint(InsertPtr);
+      InitializeEntryPoint(InitializationInsertPtr);
 
     // Adjust address spaces in the function arguments.
     auto FArg = DSI.InitializationFunction->arg_begin();
     for (auto &Arg : InitArgs) {
+
+      // If the argument is not in the header of the function (usually because
+      // it is after the scheduling of an outermost loop), create a clone
+      // in there and use it instead.
+      if (auto *I = dyn_cast<llvm::Instruction>(Arg))
+        if (I->getParent() != &Fn->front()) {
+          auto *CI = I->clone();
+          Arg = CI;
+          CI->insertBefore(InsertPtr);
+        }
 
       // Types match, nothing to do.
       if (FArg->getType() == Arg->getType()) {

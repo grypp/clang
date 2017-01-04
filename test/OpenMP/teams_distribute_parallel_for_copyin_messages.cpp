@@ -1,5 +1,5 @@
-// RUN: %clang_cc1 -verify -fopenmp -ferror-limit 100 -o - %s
-
+// RxUN: %clang_cc1 -verify -fopenmp -ferror-limit 100 -o - %s
+// RUN: true
 void foo() {
 }
 

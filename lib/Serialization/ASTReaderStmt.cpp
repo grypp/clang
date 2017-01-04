@@ -845,6 +845,16 @@ void ASTStmtReader::VisitNoInitExpr(NoInitExpr *E) {
   VisitExpr(E);
 }
 
+void ASTStmtReader::VisitArrayInitLoopExpr(ArrayInitLoopExpr *E) {
+  VisitExpr(E);
+  E->SubExprs[0] = Reader.ReadSubExpr();
+  E->SubExprs[1] = Reader.ReadSubExpr();
+}
+
+void ASTStmtReader::VisitArrayInitIndexExpr(ArrayInitIndexExpr *E) {
+  VisitExpr(E);
+}
+
 void ASTStmtReader::VisitImplicitValueInitExpr(ImplicitValueInitExpr *E) {
   VisitExpr(E);
 }
@@ -1277,7 +1287,6 @@ void ASTStmtReader::VisitLambdaExpr(LambdaExpr *E) {
   VisitExpr(E);
   unsigned NumCaptures = Record[Idx++];
   assert(NumCaptures == E->NumCaptures);(void)NumCaptures;
-  unsigned NumArrayIndexVars = Record[Idx++];
   E->IntroducerRange = ReadSourceRange(Record, Idx);
   E->CaptureDefault = static_cast<LambdaCaptureDefault>(Record[Idx++]);
   E->CaptureDefaultLoc = ReadSourceLocation(Record, Idx);
@@ -1290,17 +1299,6 @@ void ASTStmtReader::VisitLambdaExpr(LambdaExpr *E) {
                                       CEnd = E->capture_init_end();
        C != CEnd; ++C)
     *C = Reader.ReadSubExpr();
-  
-  // Read array capture index variables.
-  if (NumArrayIndexVars > 0) {
-    unsigned *ArrayIndexStarts = E->getArrayIndexStarts();
-    for (unsigned I = 0; I != NumCaptures + 1; ++I)
-      ArrayIndexStarts[I] = Record[Idx++];
-    
-    VarDecl **ArrayIndexVars = E->getArrayIndexVars();
-    for (unsigned I = 0; I != NumArrayIndexVars; ++I)
-      ArrayIndexVars[I] = ReadDeclAs<VarDecl>(Record, Idx);
-  }
 }
 
 void
@@ -1410,6 +1408,7 @@ void ASTStmtReader::VisitCXXNewExpr(CXXNewExpr *E) {
   VisitExpr(E);
   E->GlobalNew = Record[Idx++];
   bool isArray = Record[Idx++];
+  E->PassAlignment = Record[Idx++];
   E->UsualArrayDeleteWantsSize = Record[Idx++];
   unsigned NumPlacementArgs = Record[Idx++];
   E->StoredInitializationStyle = Record[Idx++];
@@ -2883,16 +2882,21 @@ void ASTStmtReader::VisitOMPTeamsDistributeSimdDirective(
   VisitOMPLoopDirective(D);
 }
 
-void ASTStmtReader::VisitOMPTargetTeamsDirective(OMPTargetTeamsDirective *D) {
-  VisitStmt(D);
-  // The NumClauses field was read in ReadStmtFromStream.
-  ++Idx;
-  VisitOMPExecutableDirective(D);
+void ASTStmtReader::VisitOMPTeamsDistributeParallelForSimdDirective(
+    OMPTeamsDistributeParallelForSimdDirective *D) {
+  VisitOMPLoopDirective(D);
 }
 
 void ASTStmtReader::VisitOMPTeamsDistributeParallelForDirective(
     OMPTeamsDistributeParallelForDirective *D) {
   VisitOMPLoopDirective(D);
+}
+
+void ASTStmtReader::VisitOMPTargetTeamsDirective(OMPTargetTeamsDirective *D) {
+  VisitStmt(D);
+  // The NumClauses field was read in ReadStmtFromStream.
+  ++Idx;
+  VisitOMPExecutableDirective(D);
 }
 
 void ASTStmtReader::VisitOMPTargetTeamsDistributeParallelForDirective(
@@ -2912,11 +2916,6 @@ void ASTStmtReader::VisitOMPTargetTeamsDistributeDirective(
 
 void ASTStmtReader::VisitOMPTargetTeamsDistributeSimdDirective(
     OMPTargetTeamsDistributeSimdDirective *D) {
-  VisitOMPLoopDirective(D);
-}
-
-void ASTStmtReader::VisitOMPTeamsDistributeParallelForSimdDirective(
-    OMPTeamsDistributeParallelForSimdDirective *D) {
   VisitOMPLoopDirective(D);
 }
 
@@ -3263,6 +3262,14 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
 
     case EXPR_NO_INIT:
       S = new (Context) NoInitExpr(Empty);
+      break;
+
+    case EXPR_ARRAY_INIT_LOOP:
+      S = new (Context) ArrayInitLoopExpr(Empty);
+      break;
+
+    case EXPR_ARRAY_INIT_INDEX:
+      S = new (Context) ArrayInitIndexExpr(Empty);
       break;
 
     case EXPR_VA_ARG:
@@ -3655,18 +3662,26 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
       break;
     }
 
-    case STMT_OMP_TARGET_TEAMS_DIRECTIVE:
-      S = OMPTargetTeamsDirective::CreateEmpty(
-          Context, Record[ASTStmtReader::NumStmtFields], Empty);
+    case STMT_OMP_TEAMS_DISTRIBUTE_PARALLEL_FOR_SIMD_DIRECTIVE: {
+      auto NumClauses = Record[ASTStmtReader::NumStmtFields];
+      auto CollapsedNum = Record[ASTStmtReader::NumStmtFields + 1];
+      S = OMPTeamsDistributeParallelForSimdDirective::CreateEmpty(
+          Context, NumClauses, CollapsedNum, Empty);
       break;
+    }
 
     case STMT_OMP_TEAMS_DISTRIBUTE_PARALLEL_FOR_DIRECTIVE: {
-      unsigned NumClauses = Record[ASTStmtReader::NumStmtFields];
-      unsigned CollapsedNum = Record[ASTStmtReader::NumStmtFields + 1];
+      auto NumClauses = Record[ASTStmtReader::NumStmtFields];
+      auto CollapsedNum = Record[ASTStmtReader::NumStmtFields + 1];
       S = OMPTeamsDistributeParallelForDirective::CreateEmpty(
           Context, NumClauses, CollapsedNum, Empty);
       break;
     }
+
+    case STMT_OMP_TARGET_TEAMS_DIRECTIVE:
+      S = OMPTargetTeamsDirective::CreateEmpty(
+          Context, Record[ASTStmtReader::NumStmtFields], Empty);
+      break;
 
     case STMT_OMP_TARGET_TEAMS_DISTRIBUTE_PARALLEL_FOR_DIRECTIVE: {
       unsigned NumClauses = Record[ASTStmtReader::NumStmtFields];
@@ -3696,14 +3711,6 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
       unsigned NumClauses = Record[ASTStmtReader::NumStmtFields];
       unsigned CollapsedNum = Record[ASTStmtReader::NumStmtFields + 1];
       S = OMPTargetTeamsDistributeSimdDirective::CreateEmpty(
-          Context, NumClauses, CollapsedNum, Empty);
-      break;
-    }
-
-    case STMT_OMP_TEAMS_DISTRIBUTE_PARALLEL_FOR_SIMD_DIRECTIVE: {
-      unsigned NumClauses = Record[ASTStmtReader::NumStmtFields];
-      unsigned CollapsedNum = Record[ASTStmtReader::NumStmtFields + 1];
-      S = OMPTeamsDistributeParallelForSimdDirective::CreateEmpty(
           Context, NumClauses, CollapsedNum, Empty);
       break;
     }
@@ -3928,9 +3935,7 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
         
     case EXPR_LAMBDA: {
       unsigned NumCaptures = Record[ASTStmtReader::NumExprFields];
-      unsigned NumArrayIndexVars = Record[ASTStmtReader::NumExprFields + 1];
-      S = LambdaExpr::CreateDeserialized(Context, NumCaptures, 
-                                         NumArrayIndexVars);
+      S = LambdaExpr::CreateDeserialized(Context, NumCaptures);
       break;
     }
     }

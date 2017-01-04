@@ -62,8 +62,8 @@ ThinLTO is currently supported for the following linkers:
   <http://llvm.org/docs/GoldPlugin.html>`_.
 - **ld64**:
   Starting with `Xcode 8 <https://developer.apple.com/xcode/>`_.
-
-Additionally, support is being added to the *lld* linker.
+- **lld**:
+  Starting with r284050 (ELF only).
 
 Usage
 =====
@@ -109,6 +109,8 @@ be reduced to ``N`` via:
   ``-Wl,-plugin-opt,jobs=N``
 - ld64:
   ``-Wl,-mllvm,-threads=N``
+- lld:
+  ``-Wl,--thinlto-jobs=N``
 
 Incremental
 -----------
@@ -140,7 +142,7 @@ To bootstrap clang/LLVM with ThinLTO, follow these steps:
   * ``-DCMAKE_C_COMPILER=/path/to/host/clang``
   * ``-DCMAKE_CXX_COMPILER=/path/to/host/clang++``
   * ``-DCMAKE_RANLIB=/path/to/host/llvm-ranlib``
-  * ``-DCMAKE_AR=/path/to/host/llvm-nm``
+  * ``-DCMAKE_AR=/path/to/host/llvm-ar``
 
 #. To use additional linker arguments for controlling the backend
    parallelism_ or enabling incremental_ builds of the bootstrap compiler,

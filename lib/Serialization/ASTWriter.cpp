@@ -516,6 +516,7 @@ ASTTypeWriter::VisitAtomicType(const AtomicType *T) {
 void
 ASTTypeWriter::VisitPipeType(const PipeType *T) {
   Record.AddTypeRef(T->getElementType());
+  Record.push_back(T->isReadOnly());
   Code = TYPE_PIPE;
 }
 
@@ -991,7 +992,7 @@ static void AddStmtsExprs(llvm::BitstreamWriter &Stream,
 
 void ASTWriter::WriteBlockInfoBlock() {
   RecordData Record;
-  Stream.EnterSubblock(llvm::bitc::BLOCKINFO_BLOCK_ID, 3);
+  Stream.EnterBlockInfoBlock();
 
 #define BLOCK(X) EmitBlockID(X ## _ID, #X, Stream, Record)
 #define RECORD(X) EmitRecordID(X, #X, Stream, Record)
@@ -1069,6 +1070,7 @@ void ASTWriter::WriteBlockInfoBlock() {
   RECORD(POINTERS_TO_MEMBERS_PRAGMA_OPTIONS);
   RECORD(UNUSED_LOCAL_TYPEDEF_NAME_CANDIDATES);
   RECORD(DELETE_EXPRS_TO_ANALYZE);
+  RECORD(CUDA_PRAGMA_FORCE_HOST_DEVICE_DEPTH);
 
   // SourceManager Block.
   BLOCK(SOURCE_MANAGER_BLOCK);
@@ -1807,7 +1809,7 @@ namespace {
     
     struct key_type {
       const FileEntry *FE;
-      const char *Filename;
+      StringRef Filename;
     };
     typedef const key_type &key_type_ref;
     
@@ -1828,7 +1830,7 @@ namespace {
     EmitKeyDataLength(raw_ostream& Out, key_type_ref key, data_type_ref Data) {
       using namespace llvm::support;
       endian::Writer<little> LE(Out);
-      unsigned KeyLen = strlen(key.Filename) + 1 + 8 + 8;
+      unsigned KeyLen = key.Filename.size() + 1 + 8 + 8;
       LE.write<uint16_t>(KeyLen);
       unsigned DataLen = 1 + 2 + 4 + 4;
       for (auto ModInfo : HS.getModuleMap().findAllModulesForHeader(key.FE))
@@ -1845,7 +1847,7 @@ namespace {
       KeyLen -= 8;
       LE.write<uint64_t>(Writer.getTimestampForOutput(key.FE));
       KeyLen -= 8;
-      Out.write(key.Filename, KeyLen);
+      Out.write(key.Filename.data(), KeyLen);
     }
     
     void EmitData(raw_ostream &Out, key_type_ref key,
@@ -1934,13 +1936,13 @@ void ASTWriter::WriteHeaderSearch(const HeaderSearch &HS) {
       continue;
 
     // Massage the file path into an appropriate form.
-    const char *Filename = File->getName();
+    StringRef Filename = File->getName();
     SmallString<128> FilenameTmp(Filename);
     if (PreparePathForOutput(FilenameTmp)) {
       // If we performed any translation on the file name at all, we need to
       // save this string, since the generator will refer to it later.
-      Filename = strdup(FilenameTmp.c_str());
-      SavedStrings.push_back(Filename);
+      Filename = StringRef(strdup(FilenameTmp.c_str()));
+      SavedStrings.push_back(Filename.data());
     }
 
     HeaderFileInfoTrait::key_type key = { File, Filename };
@@ -2074,14 +2076,13 @@ void ASTWriter::WriteSourceManagerBlock(SourceManager &SourceMgr,
         // the reader side).
         const llvm::MemoryBuffer *Buffer
           = Content->getBuffer(PP.getDiagnostics(), PP.getSourceManager());
-        const char *Name = Buffer->getBufferIdentifier();
+        StringRef Name = Buffer->getBufferIdentifier();
         Stream.EmitRecordWithBlob(SLocBufferAbbrv, Record,
-                                  StringRef(Name, strlen(Name) + 1));
+                                  StringRef(Name.data(), Name.size() + 1));
         EmitBlob = true;
 
-        if (strcmp(Name, "<built-in>") == 0) {
+        if (Name == "<built-in>")
           PreloadSLocs.push_back(SLocEntryOffsets.size());
-        }
       }
 
       if (EmitBlob) {
@@ -3943,6 +3944,13 @@ void ASTWriter::WriteOpenCLExtensions(Sema &SemaRef) {
   Stream.EmitRecord(OPENCL_EXTENSIONS, Record);
 }
 
+void ASTWriter::WriteCUDAPragmas(Sema &SemaRef) {
+  if (SemaRef.ForceCUDAHostDeviceDepth > 0) {
+    RecordData::value_type Record[] = {SemaRef.ForceCUDAHostDeviceDepth};
+    Stream.EmitRecord(CUDA_PRAGMA_FORCE_HOST_DEVICE_DEPTH, Record);
+  }
+}
+
 void ASTWriter::WriteObjCCategories() {
   SmallVector<ObjCCategoriesInfo, 2> CategoriesMap;
   RecordData Categories;
@@ -4002,14 +4010,14 @@ void ASTWriter::WriteLateParsedTemplates(Sema &SemaRef) {
     return;
 
   RecordData Record;
-  for (auto LPTMapEntry : LPTMap) {
+  for (auto &LPTMapEntry : LPTMap) {
     const FunctionDecl *FD = LPTMapEntry.first;
-    LateParsedTemplate *LPT = LPTMapEntry.second;
+    LateParsedTemplate &LPT = *LPTMapEntry.second;
     AddDeclRef(FD, Record);
-    AddDeclRef(LPT->D, Record);
-    Record.push_back(LPT->Toks.size());
+    AddDeclRef(LPT.D, Record);
+    Record.push_back(LPT.Toks.size());
 
-    for (const auto &Tok : LPT->Toks) {
+    for (const auto &Tok : LPT.Toks) {
       AddToken(Tok, Record);
     }
   }
@@ -4473,8 +4481,9 @@ uint64_t ASTWriter::WriteASTCore(Sema &SemaRef, StringRef isysroot,
                                                      Number.second));
 
   // Make sure visible decls, added to DeclContexts previously loaded from
-  // an AST file, are registered for serialization.
-  for (const auto *I : UpdatingVisibleDecls) {
+  // an AST file, are registered for serialization. Likewise for template
+  // specializations added to imported templates.
+  for (const auto *I : DeclsToEmitEvenIfUnreferenced) {
     GetDeclRef(I);
   }
 
@@ -4619,6 +4628,7 @@ uint64_t ASTWriter::WriteASTCore(Sema &SemaRef, StringRef isysroot,
   WriteIdentifierTable(PP, SemaRef.IdResolver, isModule);
   WriteFPPragmaOptions(SemaRef.getFPOptions());
   WriteOpenCLExtensions(SemaRef);
+  WriteCUDAPragmas(SemaRef);
   WritePragmaDiagnosticMappings(Context.getDiagnostics(), isModule);
 
   // If we're emitting a module, write out the submodule information.  
@@ -5578,13 +5588,8 @@ EmitCXXCtorInitializers(ASTWriter &W,
     Writer.AddSourceLocation(Init->getLParenLoc());
     Writer.AddSourceLocation(Init->getRParenLoc());
     Writer.push_back(Init->isWritten());
-    if (Init->isWritten()) {
+    if (Init->isWritten())
       Writer.push_back(Init->getSourceOrder());
-    } else {
-      Writer.push_back(Init->getNumArrayIndices());
-      for (auto *VD : Init->getArrayIndices())
-        Writer.AddDeclRef(VD);
-    }
   }
 
   return Writer.Emit(serialization::DECL_CXX_CTOR_INITIALIZERS);
@@ -5819,9 +5824,9 @@ void ASTWriter::AddedVisibleDecl(const DeclContext *DC, const Decl *D) {
     // that we write out all of its lookup results so we don't get a nasty
     // surprise when we try to emit its lookup table.
     for (auto *Child : DC->decls())
-      UpdatingVisibleDecls.push_back(Child);
+      DeclsToEmitEvenIfUnreferenced.push_back(Child);
   }
-  UpdatingVisibleDecls.push_back(D);
+  DeclsToEmitEvenIfUnreferenced.push_back(D);
 }
 
 void ASTWriter::AddedCXXImplicitMember(const CXXRecordDecl *RD, const Decl *D) {
@@ -5989,4 +5994,40 @@ void ASTWriter::AddedAttributeToRecord(const Attr *Attr,
   if (!Record->isFromASTFile())
     return;
   DeclUpdates[Record].push_back(DeclUpdate(UPD_ADDED_ATTR_TO_RECORD, Attr));
+}
+
+void ASTWriter::AddedCXXTemplateSpecialization(
+    const ClassTemplateDecl *TD, const ClassTemplateSpecializationDecl *D) {
+  assert(!WritingAST && "Already writing the AST!");
+
+  if (!TD->getFirstDecl()->isFromASTFile())
+    return;
+  if (Chain && Chain->isProcessingUpdateRecords())
+    return;
+
+  DeclsToEmitEvenIfUnreferenced.push_back(D);
+}
+
+void ASTWriter::AddedCXXTemplateSpecialization(
+    const VarTemplateDecl *TD, const VarTemplateSpecializationDecl *D) {
+  assert(!WritingAST && "Already writing the AST!");
+
+  if (!TD->getFirstDecl()->isFromASTFile())
+    return;
+  if (Chain && Chain->isProcessingUpdateRecords())
+    return;
+
+  DeclsToEmitEvenIfUnreferenced.push_back(D);
+}
+
+void ASTWriter::AddedCXXTemplateSpecialization(const FunctionTemplateDecl *TD,
+                                               const FunctionDecl *D) {
+  assert(!WritingAST && "Already writing the AST!");
+
+  if (!TD->getFirstDecl()->isFromASTFile())
+    return;
+  if (Chain && Chain->isProcessingUpdateRecords())
+    return;
+
+  DeclsToEmitEvenIfUnreferenced.push_back(D);
 }

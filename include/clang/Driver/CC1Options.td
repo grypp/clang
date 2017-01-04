@@ -507,6 +507,9 @@ def arcmt_modify : Flag<["-"], "arcmt-modify">,
 def arcmt_migrate : Flag<["-"], "arcmt-migrate">,
   HelpText<"Apply modifications and produces temporary files that conform to ARC">;
 
+def opt_record_file : Separate<["-"], "opt-record-file">,
+  HelpText<"File name to use for YAML optimization record output">;
+
 def print_stats : Flag<["-"], "print-stats">,
   HelpText<"Print performance metrics and statistics">;
 def stats_file : Joined<["-"], "stats-file=">,
@@ -638,9 +641,11 @@ def fdefault_calling_conv_EQ : Joined<["-"], "fdefault-calling-conv=">,
 def finclude_default_header : Flag<["-"], "finclude-default-header">,
   HelpText<"Include the default header file for OpenCL">;
 
-// C++ TSes.
-def fcoroutines : Flag<["-"], "fcoroutines">,
-  HelpText<"Enable support for the C++ Coroutines TS">;
+// FIXME: Remove these entirely once functionality/tests have been excised.
+def fobjc_gc_only : Flag<["-"], "fobjc-gc-only">, Group<f_Group>,
+  HelpText<"Use GC exclusively for Objective-C related memory management">;
+def fobjc_gc : Flag<["-"], "fobjc-gc">, Group<f_Group>,
+  HelpText<"Enable Objective-C garbage collection">;
 
 //===----------------------------------------------------------------------===//
 // Header Search Options
@@ -685,6 +690,13 @@ def token_cache : Separate<["-"], "token-cache">, MetaVarName<"<path>">,
   HelpText<"Use specified token cache file">;
 def detailed_preprocessing_record : Flag<["-"], "detailed-preprocessing-record">,
   HelpText<"include a detailed record of preprocessing actions">;
+
+//===----------------------------------------------------------------------===//
+// OpenCL Options
+//===----------------------------------------------------------------------===//
+
+def cl_ext_EQ : CommaJoined<["-"], "cl-ext=">,
+  HelpText<"OpenCL only. Enable or disable OpenCL extensions. The argument is a comma-separated sequence of one or more extension names, each prefixed by '+' or '-'.">;
 
 //===----------------------------------------------------------------------===//
 // CUDA Options
@@ -737,4 +749,6 @@ def show_inst : Flag<["-"], "show-inst">,
 def dwarf_debug_producer : Separate<["-"], "dwarf-debug-producer">,
   HelpText<"The string to embed in the Dwarf debug AT_producer record.">;
 
+def defsym : Separate<["-"], "defsym">,
+  HelpText<"Define a value for a symbol">;
 } // let Flags = [CC1AsOption]

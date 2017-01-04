@@ -3,7 +3,7 @@
 #ifdef CK1
 
 
-// CK1: define void @__omp_offloading_{{.+}}bar{{.+}}
+// CK1: define {{.*}}void @__omp_offloading_{{.+}}bar{{.+}}
 
 int foo (float myvar)
 {

@@ -310,8 +310,7 @@ private:
   /// \brief Creates offloading entry for the provided entry ID \a ID,
   /// address \a Addr and size \a Size with flags \a Flags.
   void createOffloadEntry(llvm::Constant *ID, llvm::Constant *Addr,
-                          uint64_t Size,
-                          llvm::ConstantInt *Flags = nullptr) override;
+                          uint64_t Size, uint64_t Flags = 0u) override;
 
   /// \brief Emit outlined function specialized for the Fork-Join
   /// programming model for applicable target directives on the NVPTX device.

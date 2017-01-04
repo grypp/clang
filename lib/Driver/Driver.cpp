@@ -42,6 +42,9 @@
 #include <map>
 #include <memory>
 #include <utility>
+#if LLVM_ON_UNIX
+#include <unistd.h> // getpid
+#endif
 
 using namespace clang::driver;
 using namespace clang;
@@ -470,14 +473,18 @@ void Driver::CreateOffloadingDeviceToolChains(Compilation &C,
   if (llvm::any_of(Inputs, [](std::pair<types::ID, const llvm::opt::Arg *> &I) {
         return types::isCuda(I.first);
       })) {
-    const ToolChain &TC = getToolChain(
-        C.getInputArgs(),
-        llvm::Triple(C.getSingleOffloadToolChain<Action::OFK_Host>()
-                             ->getTriple()
-                             .isArch64Bit()
-                         ? "nvptx64-nvidia-cuda"
-                         : "nvptx-nvidia-cuda"));
-    C.addOffloadDeviceToolChain(&TC, Action::OFK_Cuda);
+    const ToolChain *HostTC = C.getSingleOffloadToolChain<Action::OFK_Host>();
+    const llvm::Triple &HostTriple = HostTC->getTriple();
+    llvm::Triple CudaTriple(HostTriple.isArch64Bit() ? "nvptx64-nvidia-cuda"
+                                                     : "nvptx-nvidia-cuda");
+    // Use the CUDA and host triples as the key into the ToolChains map, because
+    // the device toolchain we create depends on both.
+    ToolChain *&CudaTC = ToolChains[CudaTriple.str() + "/" + HostTriple.str()];
+    if (!CudaTC) {
+      CudaTC = new toolchains::CudaToolChain(*this, CudaTriple, *HostTC,
+                                             C.getInputArgs());
+    }
+    C.addOffloadDeviceToolChain(CudaTC, Action::OFK_Cuda);
   }
 
   //
@@ -522,8 +529,23 @@ void Driver::CreateOffloadingDeviceToolChains(Compilation &C,
           if (TT.getArch() == llvm::Triple::UnknownArch)
             Diag(clang::diag::err_drv_invalid_omp_target) << Val;
           else {
-            const ToolChain &TC = getToolChain(C.getInputArgs(), TT);
-            C.addOffloadDeviceToolChain(&TC, Action::OFK_OpenMP);
+            const ToolChain *TC = nullptr;
+            // CUDA toolchains have to be selected differently. They pair host
+            // and device in its implementation.
+            if (TT.getArch() == llvm::Triple::nvptx ||
+                TT.getArch() == llvm::Triple::nvptx64) {
+              const ToolChain *HostTC =
+                  C.getSingleOffloadToolChain<Action::OFK_Host>();
+              assert(HostTC && "Host toolchain should be always defined.");
+              ToolChain *&CudaTC =
+                  ToolChains[TT.str() + "/" + HostTC->getTriple().normalize()];
+              if (!CudaTC)
+                CudaTC = new toolchains::CudaToolChain(*this, TT, *HostTC,
+                                                       C.getInputArgs());
+              TC = CudaTC;
+            } else
+              TC = &getToolChain(C.getInputArgs(), TT);
+            C.addOffloadDeviceToolChain(TC, Action::OFK_OpenMP);
           }
         }
       } else
@@ -626,26 +648,20 @@ Compilation *Driver::BuildCompilation(ArrayRef<const char *> ArgList) {
 
   setLTOMode(Args);
 
-  // Ignore -fembed-bitcode options with LTO
-  // since the output will be bitcode anyway.
-  if (getLTOMode() == LTOK_None) {
-    if (Arg *A = Args.getLastArg(options::OPT_fembed_bitcode_EQ)) {
-      StringRef Name = A->getValue();
-      unsigned Model = llvm::StringSwitch<unsigned>(Name)
-          .Case("off", EmbedNone)
-          .Case("all", EmbedBitcode)
-          .Case("bitcode", EmbedBitcode)
-          .Case("marker", EmbedMarker)
-          .Default(~0U);
-      if (Model == ~0U) {
-        Diags.Report(diag::err_drv_invalid_value) << A->getAsString(Args)
-                                                  << Name;
-      } else
-        BitcodeEmbed = static_cast<BitcodeEmbedMode>(Model);
-    }
-  } else {
-    // claim the bitcode option under LTO so no warning is issued.
-    Args.ClaimAllArgs(options::OPT_fembed_bitcode_EQ);
+  // Process -fembed-bitcode= flags.
+  if (Arg *A = Args.getLastArg(options::OPT_fembed_bitcode_EQ)) {
+    StringRef Name = A->getValue();
+    unsigned Model = llvm::StringSwitch<unsigned>(Name)
+        .Case("off", EmbedNone)
+        .Case("all", EmbedBitcode)
+        .Case("bitcode", EmbedBitcode)
+        .Case("marker", EmbedMarker)
+        .Default(~0U);
+    if (Model == ~0U) {
+      Diags.Report(diag::err_drv_invalid_value) << A->getAsString(Args)
+                                                << Name;
+    } else
+      BitcodeEmbed = static_cast<BitcodeEmbedMode>(Model);
   }
 
   std::unique_ptr<llvm::opt::InputArgList> UArgs =
@@ -699,6 +715,95 @@ static void printArgList(raw_ostream &OS, const llvm::opt::ArgList &Args) {
     Command::printArg(OS, *I, true);
   }
   OS << '\n';
+}
+
+bool Driver::getCrashDiagnosticFile(StringRef ReproCrashFilename,
+                                    SmallString<128> &CrashDiagDir) {
+  using namespace llvm::sys;
+  assert(llvm::Triple(llvm::sys::getProcessTriple()).isOSDarwin() &&
+         "Only knows about .crash files on Darwin");
+
+  // The .crash file can be found on at ~/Library/Logs/DiagnosticReports/
+  // (or /Library/Logs/DiagnosticReports for root) and has the filename pattern
+  // clang-<VERSION>_<YYYY-MM-DD-HHMMSS>_<hostname>.crash.
+  path::home_directory(CrashDiagDir);
+  if (CrashDiagDir.startswith("/var/root"))
+    CrashDiagDir = "/";
+  path::append(CrashDiagDir, "Library/Logs/DiagnosticReports");
+  int PID =
+#if LLVM_ON_UNIX
+      getpid();
+#else
+      0;
+#endif
+  std::error_code EC;
+  fs::file_status FileStatus;
+  TimePoint<> LastAccessTime;
+  SmallString<128> CrashFilePath;
+  // Lookup the .crash files and get the one generated by a subprocess spawned
+  // by this driver invocation.
+  for (fs::directory_iterator File(CrashDiagDir, EC), FileEnd;
+       File != FileEnd && !EC; File.increment(EC)) {
+    StringRef FileName = path::filename(File->path());
+    if (!FileName.startswith(Name))
+      continue;
+    if (fs::status(File->path(), FileStatus))
+      continue;
+    llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> CrashFile =
+        llvm::MemoryBuffer::getFile(File->path());
+    if (!CrashFile)
+      continue;
+    // The first line should start with "Process:", otherwise this isn't a real
+    // .crash file.
+    StringRef Data = CrashFile.get()->getBuffer();
+    if (!Data.startswith("Process:"))
+      continue;
+    // Parse parent process pid line, e.g: "Parent Process: clang-4.0 [79141]"
+    size_t ParentProcPos = Data.find("Parent Process:");
+    if (ParentProcPos == StringRef::npos)
+      continue;
+    size_t LineEnd = Data.find_first_of("\n", ParentProcPos);
+    if (LineEnd == StringRef::npos)
+      continue;
+    StringRef ParentProcess = Data.slice(ParentProcPos+15, LineEnd).trim();
+    int OpenBracket = -1, CloseBracket = -1;
+    for (size_t i = 0, e = ParentProcess.size(); i < e; ++i) {
+      if (ParentProcess[i] == '[')
+        OpenBracket = i;
+      if (ParentProcess[i] == ']')
+        CloseBracket = i;
+    }
+    // Extract the parent process PID from the .crash file and check whether
+    // it matches this driver invocation pid.
+    int CrashPID;
+    if (OpenBracket < 0 || CloseBracket < 0 ||
+        ParentProcess.slice(OpenBracket + 1, CloseBracket)
+            .getAsInteger(10, CrashPID) || CrashPID != PID) {
+      continue;
+    }
+
+    // Found a .crash file matching the driver pid. To avoid getting an older
+    // and misleading crash file, continue looking for the most recent.
+    // FIXME: the driver can dispatch multiple cc1 invocations, leading to
+    // multiple crashes poiting to the same parent process. Since the driver
+    // does not collect pid information for the dispatched invocation there's
+    // currently no way to distinguish among them.
+    const auto FileAccessTime = FileStatus.getLastModificationTime();
+    if (FileAccessTime > LastAccessTime) {
+      CrashFilePath.assign(File->path());
+      LastAccessTime = FileAccessTime;
+    }
+  }
+
+  // If found, copy it over to the location of other reproducer files.
+  if (!CrashFilePath.empty()) {
+    EC = fs::copy_file(CrashFilePath, ReproCrashFilename);
+    if (EC)
+      return false;
+    return true;
+  }
+
+  return false;
 }
 
 // When clang crashes, produce diagnostic information including the fully
@@ -828,8 +933,13 @@ void Driver::generateCompilationDiagnostics(Compilation &C,
          "Preprocessed source(s) and associated run script(s) are located at:";
 
   SmallString<128> VFS;
+  SmallString<128> ReproCrashFilename;
   for (const char *TempFile : TempFiles) {
     Diag(clang::diag::note_drv_command_failed_diag_msg) << TempFile;
+    if (ReproCrashFilename.empty()) {
+      ReproCrashFilename = TempFile;
+      llvm::sys::path::replace_extension(ReproCrashFilename, ".crash");
+    }
     if (StringRef(TempFile).endswith(".cache")) {
       // In some cases (modules) we'll dump extra data to help with reproducing
       // the crash into a directory next to the output.
@@ -857,6 +967,24 @@ void Driver::generateCompilationDiagnostics(Compilation &C,
     Diag(clang::diag::note_drv_command_failed_diag_msg) << Script;
   }
 
+  // On darwin, provide information about the .crash diagnostic report.
+  if (llvm::Triple(llvm::sys::getProcessTriple()).isOSDarwin()) {
+    SmallString<128> CrashDiagDir;
+    if (getCrashDiagnosticFile(ReproCrashFilename, CrashDiagDir)) {
+      Diag(clang::diag::note_drv_command_failed_diag_msg)
+          << ReproCrashFilename.str();
+    } else { // Suggest a directory for the user to look for .crash files.
+      llvm::sys::path::append(CrashDiagDir, Name);
+      CrashDiagDir += "_<YYYY-MM-DD-HHMMSS>_<hostname>.crash";
+      Diag(clang::diag::note_drv_command_failed_diag_msg)
+          << "Crash backtrace is located in";
+      Diag(clang::diag::note_drv_command_failed_diag_msg)
+          << CrashDiagDir.str();
+      Diag(clang::diag::note_drv_command_failed_diag_msg)
+          << "(choose the .crash file that corresponds to your crash)";
+    }
+  }
+
   for (const auto &A : C.getArgs().filtered(options::OPT_frewrite_map_file,
                                             options::OPT_frewrite_map_file_EQ))
     Diag(clang::diag::note_drv_command_failed_diag_msg) << A->getValue();
@@ -874,8 +1002,7 @@ void Driver::setUpResponseFiles(Compilation &C, Command &Cmd) {
     return;
 
   std::string TmpName = GetTemporaryPath("response", "txt");
-  Cmd.setResponseFile(
-      C.addTempFile(C.getArgs().MakeArgString(TmpName.c_str())));
+  Cmd.setResponseFile(C.addTempFile(C.getArgs().MakeArgString(TmpName)));
 }
 
 int Driver::ExecuteCompilation(
@@ -1073,7 +1200,15 @@ bool Driver::HandleImmediateArgs(const Compilation &C) {
   }
 
   if (C.getArgs().hasArg(options::OPT_print_libgcc_file_name)) {
-    llvm::outs() << GetFilePath("libgcc.a", TC) << "\n";
+    ToolChain::RuntimeLibType RLT = TC.GetRuntimeLibType(C.getArgs());
+    switch (RLT) {
+    case ToolChain::RLT_CompilerRT:
+      llvm::outs() << TC.getCompilerRT(C.getArgs(), "builtins") << "\n";
+      break;
+    case ToolChain::RLT_Libgcc:
+      llvm::outs() << GetFilePath("libgcc.a", TC) << "\n";
+      break;
+    }
     return false;
   }
 
@@ -1489,9 +1624,6 @@ class OffloadingActionBuilder final {
   /// The compilation that is using this builder.
   Compilation &C;
 
-  /// The derived arguments associated with this builder.
-  DerivedArgList &Args;
-
   /// Map between an input argument and the offload kinds used to process it.
   std::map<const Arg *, unsigned> InputArgToOffloadKindMap;
 
@@ -1539,8 +1671,9 @@ class OffloadingActionBuilder final {
     /// added to the provided host action \a HostAction. By default it is
     /// inactive.
     virtual ActionBuilderReturnCode
-    getDeviceDepences(OffloadAction::DeviceDependences &DA, phases::ID CurPhase,
-                      phases::ID FinalPhase, PhasesTy &Phases) {
+    getDeviceDependences(OffloadAction::DeviceDependences &DA,
+                         phases::ID CurPhase, phases::ID FinalPhase,
+                         PhasesTy &Phases) {
       return ABRT_Inactive;
     }
 
@@ -1601,8 +1734,9 @@ class OffloadingActionBuilder final {
         : DeviceActionBuilder(C, Args, Inputs, Action::OFK_Cuda) {}
 
     ActionBuilderReturnCode
-    getDeviceDepences(OffloadAction::DeviceDependences &DA, phases::ID CurPhase,
-                      phases::ID FinalPhase, PhasesTy &Phases) override {
+    getDeviceDependences(OffloadAction::DeviceDependences &DA,
+                         phases::ID CurPhase, phases::ID FinalPhase,
+                         PhasesTy &Phases) override {
       if (!IsActive)
         return ABRT_Inactive;
 
@@ -1685,6 +1819,11 @@ class OffloadingActionBuilder final {
 
         // We avoid creating host action in device-only mode.
         return CompileDeviceOnly ? ABRT_Ignore_Host : ABRT_Success;
+      } else if (CurPhase > phases::Backend) {
+        // If we are past the backend phase and still have a device action, we
+        // don't have to do anything as this action is already a device
+        // top-level action.
+        return ABRT_Success;
       }
 
       assert(CurPhase < phases::Backend && "Generating single CUDA "
@@ -1795,25 +1934,39 @@ class OffloadingActionBuilder final {
                               options::OPT_cuda_device_only);
 
       // Collect all cuda_gpu_arch parameters, removing duplicates.
-      llvm::SmallSet<CudaArch, 4> GpuArchs;
+      std::set<CudaArch> GpuArchs;
       bool Error = false;
       for (Arg *A : Args) {
-        if (!A->getOption().matches(options::OPT_cuda_gpu_arch_EQ))
+        if (!(A->getOption().matches(options::OPT_cuda_gpu_arch_EQ) ||
+              A->getOption().matches(options::OPT_no_cuda_gpu_arch_EQ)))
           continue;
         A->claim();
 
-        const auto &ArchStr = A->getValue();
+        const StringRef ArchStr = A->getValue();
+        if (A->getOption().matches(options::OPT_no_cuda_gpu_arch_EQ) &&
+            ArchStr == "all") {
+          GpuArchs.clear();
+          continue;
+        }
         CudaArch Arch = StringToCudaArch(ArchStr);
         if (Arch == CudaArch::UNKNOWN) {
           C.getDriver().Diag(clang::diag::err_drv_cuda_bad_gpu_arch) << ArchStr;
           Error = true;
-        } else if (GpuArchs.insert(Arch).second)
-          GpuArchList.push_back(Arch);
+        } else if (A->getOption().matches(options::OPT_cuda_gpu_arch_EQ))
+          GpuArchs.insert(Arch);
+        else if (A->getOption().matches(options::OPT_no_cuda_gpu_arch_EQ))
+          GpuArchs.erase(Arch);
+        else
+          llvm_unreachable("Unexpected option.");
       }
 
-      // Default to sm_20 which is the lowest common denominator for supported
-      // GPUs.
-      // sm_20 code should work correctly, if suboptimally, on all newer GPUs.
+      // Collect list of GPUs remaining in the set.
+      for (CudaArch Arch : GpuArchs)
+        GpuArchList.push_back(Arch);
+
+      // Default to sm_20 which is the lowest common denominator for
+      // supported GPUs.  sm_20 code should work correctly, if
+      // suboptimally, on all newer GPUs.
       if (GpuArchList.empty())
         GpuArchList.push_back(CudaArch::SM_20);
 
@@ -1836,8 +1989,9 @@ class OffloadingActionBuilder final {
         : DeviceActionBuilder(C, Args, Inputs, Action::OFK_OpenMP) {}
 
     ActionBuilderReturnCode
-    getDeviceDepences(OffloadAction::DeviceDependences &DA, phases::ID CurPhase,
-                      phases::ID FinalPhase, PhasesTy &Phases) override {
+    getDeviceDependences(OffloadAction::DeviceDependences &DA,
+                         phases::ID CurPhase, phases::ID FinalPhase,
+                         PhasesTy &Phases) override {
 
       // We should always have an action for each input.
       assert(OpenMPDeviceActions.size() == ToolChains.size() &&
@@ -1854,7 +2008,7 @@ class OffloadingActionBuilder final {
           ++LI;
         }
 
-        // We passed the device action to a host dependence, so we don't need to
+        // We passed the device action as a host dependence, so we don't need to
         // do anything else with them.
         OpenMPDeviceActions.clear();
         return ABRT_Success;
@@ -1883,18 +2037,18 @@ class OffloadingActionBuilder final {
         OpenMPDeviceActions.clear();
         for (unsigned I = 0; I < ToolChains.size(); ++I) {
           OpenMPDeviceActions.push_back(UA);
-          UA->registerDependingActionInfo(ToolChains[I], /*BoundArch=*/nullptr,
-                                          Action::OFK_OpenMP);
+          UA->registerDependentActionInfo(
+              ToolChains[I], /*BoundArch=*/StringRef(), Action::OFK_OpenMP);
         }
         return ABRT_Success;
       }
 
       // When generating code for OpenMP we use the host compile phase result as
-      // dependence to the device compile phase so that it can learn what
-      // declaration should be emitted. However, this is not the only use for
-      // the host action, so we have prevent it from being collapsed.
+      // a dependence to the device compile phase so that it can learn what
+      // declarations should be emitted. However, this is not the only use for
+      // the host action, so we prevent it from being collapsed.
       if (isa<CompileJobAction>(HostAction)) {
-        HostAction->setCannotBeCollapsedWithDependingAction();
+        HostAction->setCannotBeCollapsedWithNextDependentAction();
         assert(ToolChains.size() == OpenMPDeviceActions.size() &&
                "Toolchains and device action sizes do not match.");
         OffloadAction::HostDependence HDep(
@@ -1949,7 +2103,7 @@ class OffloadingActionBuilder final {
 
     bool initialize() override {
       // Get the OpenMP toolchains. If we don't get any, the action builder will
-      // know there is nothing to do related with OpenMP offloading.
+      // know there is nothing to do related to OpenMP offloading.
       auto OpenMPTCRange = C.getOffloadToolChains<Action::OFK_OpenMP>();
       for (auto TI = OpenMPTCRange.first, TE = OpenMPTCRange.second; TI != TE;
            ++TI)
@@ -1978,7 +2132,7 @@ class OffloadingActionBuilder final {
 public:
   OffloadingActionBuilder(Compilation &C, DerivedArgList &Args,
                           const Driver::InputList &Inputs)
-      : C(C), Args(Args) {
+      : C(C) {
     // Create a specialized builder for each device toolchain.
 
     IsValid = true;
@@ -2044,7 +2198,8 @@ public:
         continue;
       }
 
-      auto RetCode = SB->getDeviceDepences(DDeps, CurPhase, FinalPhase, Phases);
+      auto RetCode =
+          SB->getDeviceDependences(DDeps, CurPhase, FinalPhase, Phases);
 
       // If the builder explicitly says the host action should be ignored,
       // we need to increment the variable that tracks the builders that request
@@ -2085,15 +2240,18 @@ public:
 
     // If we are supporting bundling/unbundling and the current action is an
     // input action of non-source file, we replace the host action by the
-    // unbundling action.
+    // unbundling action. The bundler tool has the logic to detect if an input
+    // is a bundle or not and if the input is not a bundle it assumes it is a
+    // host file. Therefore it is safe to create an unbundling action even if
+    // the input is not a bundle.
     if (CanUseBundler && isa<InputAction>(HostAction) &&
         InputArg->getOption().getKind() == llvm::opt::Option::InputClass &&
         !types::isSrcFile(HostAction->getType())) {
       auto UnbundlingHostAction =
           C.MakeAction<OffloadUnbundlingJobAction>(HostAction);
-      UnbundlingHostAction->registerDependingActionInfo(
+      UnbundlingHostAction->registerDependentActionInfo(
           C.getSingleOffloadToolChain<Action::OFK_Host>(),
-          /*BoundArch=*/nullptr, Action::OFK_Host);
+          /*BoundArch=*/StringRef(), Action::OFK_Host);
       HostAction = UnbundlingHostAction;
     }
 
@@ -2153,16 +2311,6 @@ public:
     if (HostAction)
       HostAction->propagateHostOffloadInfo(InputArgToOffloadKindMap[InputArg],
                                            /*BoundArch=*/nullptr);
-
-    // If any action is added by the builders, -o is ambiguous if we have more
-    // than one top-level action. If a bundler is used, there is no ambiguity.
-    if (!CanUseBundler && !OffloadAL.empty() && Args.hasArg(options::OPT_o) &&
-        AL.size() > 1) {
-      C.getDriver().Diag(
-          clang::diag::err_drv_output_argument_with_multiple_files);
-      return true;
-    }
-
     return false;
   }
 
@@ -2582,7 +2730,7 @@ void Driver::BuildJobs(Compilation &C) const {
     }
 
     BuildJobsForAction(C, A, &C.getDefaultToolChain(),
-                       /*BoundArch*/ nullptr,
+                       /*BoundArch*/ StringRef(),
                        /*AtTopLevel*/ true,
                        /*MultipleArchs*/ ArchNames.size() > 1,
                        /*LinkingOutput*/ LinkingOutput, CachedResults,
@@ -2656,39 +2804,41 @@ class ToolSelector final {
   bool SaveTemps;
   bool EmbedBitcode;
 
-  /// Get dependence action or null if that does not exist. If \a CanBeCollapsed
-  /// is false, that action must be legal to collapse or null will be returned.
-  const JobAction *getDependenceAction(const ActionList &Inputs,
-                                       ActionList &SavedOffloadAction,
-                                       bool CanBeCollapsed = true) {
+  /// Get previous dependent action or null if that does not exist. If
+  /// \a CanBeCollapsed is false, that action must be legal to collapse or
+  /// null will be returned.
+  const JobAction *getPrevDependentAction(const ActionList &Inputs,
+                                          ActionList &SavedOffloadAction,
+                                          bool CanBeCollapsed = true) {
     // An option can be collapsed only if it has a single input.
     if (Inputs.size() != 1)
       return nullptr;
 
     Action *CurAction = *Inputs.begin();
-    if (!CurAction->isCollapsingWithDependingActionLegal() && CanBeCollapsed)
+    if (CanBeCollapsed &&
+        !CurAction->isCollapsingWithNextDependentActionLegal())
       return nullptr;
 
     // If the input action is an offload action. Look through it and save any
     // offload action that can be dropped in the event of a collapse.
     if (auto *OA = dyn_cast<OffloadAction>(CurAction)) {
-      // If the depending action is a device action, we will attempt to collapse
+      // If the dependent action is a device action, we will attempt to collapse
       // only with other device actions. Otherwise, we would do the same but
       // with host actions only.
       if (!IsHostSelector) {
         if (OA->hasSingleDeviceDependence(/*DoNotConsiderHostActions=*/true)) {
           CurAction =
               OA->getSingleDeviceDependence(/*DoNotConsiderHostActions=*/true);
-          if (!CurAction->isCollapsingWithDependingActionLegal() &&
-              CanBeCollapsed)
+          if (CanBeCollapsed &&
+              !CurAction->isCollapsingWithNextDependentActionLegal())
             return nullptr;
           SavedOffloadAction.push_back(OA);
           return dyn_cast<JobAction>(CurAction);
         }
       } else if (OA->hasHostDependence()) {
         CurAction = OA->getHostDependence();
-        if (!CurAction->isCollapsingWithDependingActionLegal() &&
-            CanBeCollapsed)
+        if (CanBeCollapsed &&
+            !CurAction->isCollapsingWithNextDependentActionLegal())
           return nullptr;
         SavedOffloadAction.push_back(OA);
         return dyn_cast<JobAction>(CurAction);
@@ -2716,7 +2866,7 @@ class ToolSelector final {
 
   /// Struct that relates an action with the offload actions that would be
   /// collapsed with it.
-  struct JobActionInfoTy final {
+  struct JobActionInfo final {
     /// The action this info refers to.
     const JobAction *JA = nullptr;
     /// The offload actions we need to take care off if this action is
@@ -2726,10 +2876,9 @@ class ToolSelector final {
 
   /// Append collapsed offload actions from the give nnumber of elements in the
   /// action info array.
-  static void
-  AppendCollapsedOffloadAction(ActionList &CollapsedOffloadAction,
-                               ArrayRef<JobActionInfoTy> &ActionInfo,
-                               unsigned ElementNum) {
+  static void AppendCollapsedOffloadAction(ActionList &CollapsedOffloadAction,
+                                           ArrayRef<JobActionInfo> &ActionInfo,
+                                           unsigned ElementNum) {
     assert(ElementNum <= ActionInfo.size() && "Invalid number of elements.");
     for (unsigned I = 0; I < ElementNum; ++I)
       CollapsedOffloadAction.append(ActionInfo[I].SavedOffloadAction.begin(),
@@ -2746,9 +2895,9 @@ class ToolSelector final {
   ///  - Assemble + Backend ;
   ///  - Backend + Compile.
   const Tool *
-  attemptCombineAssembleBackendCompile(ArrayRef<JobActionInfoTy> ActionInfo,
-                                       const ActionList *&Inputs,
-                                       ActionList &CollapsedOffloadAction) {
+  combineAssembleBackendCompile(ArrayRef<JobActionInfo> ActionInfo,
+                                const ActionList *&Inputs,
+                                ActionList &CollapsedOffloadAction) {
     if (ActionInfo.size() < 3 || !canCollapseAssembleAction())
       return nullptr;
     auto *AJ = dyn_cast<AssembleJobAction>(ActionInfo[0].JA);
@@ -2778,10 +2927,9 @@ class ToolSelector final {
                                  /*NumElements=*/3);
     return T;
   }
-  const Tool *
-  attemptCombineAssembleBackend(ArrayRef<JobActionInfoTy> ActionInfo,
-                                const ActionList *&Inputs,
-                                ActionList &CollapsedOffloadAction) {
+  const Tool *combineAssembleBackend(ArrayRef<JobActionInfo> ActionInfo,
+                                     const ActionList *&Inputs,
+                                     ActionList &CollapsedOffloadAction) {
     if (ActionInfo.size() < 2 || !canCollapseAssembleAction())
       return nullptr;
     auto *AJ = dyn_cast<AssembleJobAction>(ActionInfo[0].JA);
@@ -2791,8 +2939,8 @@ class ToolSelector final {
 
     // Retrieve the compile job, backend action must always be preceded by one.
     ActionList CompileJobOffloadActions;
-    auto *CJ = getDependenceAction(BJ->getInputs(), CompileJobOffloadActions,
-                                   /*CanBeCollapsed=*/false);
+    auto *CJ = getPrevDependentAction(BJ->getInputs(), CompileJobOffloadActions,
+                                      /*CanBeCollapsed=*/false);
     if (!AJ || !BJ || !CJ)
       return nullptr;
 
@@ -2812,9 +2960,9 @@ class ToolSelector final {
                                  /*NumElements=*/2);
     return T;
   }
-  const Tool *attemptCombineBackendCompile(ArrayRef<JobActionInfoTy> ActionInfo,
-                                           const ActionList *&Inputs,
-                                           ActionList &CollapsedOffloadAction) {
+  const Tool *combineBackendCompile(ArrayRef<JobActionInfo> ActionInfo,
+                                    const ActionList *&Inputs,
+                                    ActionList &CollapsedOffloadAction) {
     if (ActionInfo.size() < 2 || !canCollapsePreprocessorAction())
       return nullptr;
     auto *BJ = dyn_cast<BackendJobAction>(ActionInfo[0].JA);
@@ -2840,14 +2988,14 @@ class ToolSelector final {
   /// preprocessor action, and the current input is indeed a preprocessor
   /// action. If combining results in the collapse of offloading actions, those
   /// are appended to \a CollapsedOffloadAction.
-  void attemptCombineWithPreprocess(const Tool *T, const ActionList *&Inputs,
-                                    ActionList &CollapsedOffloadAction) {
+  void combineWithPreprocessor(const Tool *T, const ActionList *&Inputs,
+                               ActionList &CollapsedOffloadAction) {
     if (!T || !canCollapsePreprocessorAction() || !T->hasIntegratedCPP())
       return;
 
     // Attempt to get a preprocessor action dependence.
     ActionList PreprocessJobOffloadActions;
-    auto *PJ = getDependenceAction(*Inputs, PreprocessJobOffloadActions);
+    auto *PJ = getPrevDependentAction(*Inputs, PreprocessJobOffloadActions);
     if (!PJ || !isa<PreprocessJobAction>(PJ))
       return;
 
@@ -2867,7 +3015,7 @@ public:
     IsHostSelector = BaseAction->getOffloadingDeviceKind() == Action::OFK_None;
   }
 
-  /// Check if a chain of action can be combined and return the tool that can
+  /// Check if a chain of actions can be combined and return the tool that can
   /// handle the combination of actions. The pointer to the current inputs \a
   /// Inputs and the list of offload actions \a CollapsedOffloadActions
   /// connected to collapsed actions are updated accordingly. The latter enables
@@ -2879,18 +3027,18 @@ public:
     // Get the largest chain of actions that we could combine.
     //
 
-    SmallVector<JobActionInfoTy, 5> ActionChain(1);
+    SmallVector<JobActionInfo, 5> ActionChain(1);
     ActionChain.back().JA = BaseAction;
     while (ActionChain.back().JA) {
       const Action *CurAction = ActionChain.back().JA;
 
       // Grow the chain by one element.
       ActionChain.resize(ActionChain.size() + 1);
-      JobActionInfoTy &AI = ActionChain.back();
+      JobActionInfo &AI = ActionChain.back();
 
       // Attempt to fill it with the
       AI.JA =
-          getDependenceAction(CurAction->getInputs(), AI.SavedOffloadAction);
+          getPrevDependentAction(CurAction->getInputs(), AI.SavedOffloadAction);
     }
 
     // Pop the last action info as it could not be filled.
@@ -2902,23 +3050,18 @@ public:
     // action with any preprocessor action it may depend on.
     //
 
-    const Tool *T = nullptr;
-
+    const Tool *T = combineAssembleBackendCompile(ActionChain, Inputs,
+                                                  CollapsedOffloadAction);
     if (!T)
-      T = attemptCombineAssembleBackendCompile(ActionChain, Inputs,
-                                               CollapsedOffloadAction);
+      T = combineAssembleBackend(ActionChain, Inputs, CollapsedOffloadAction);
     if (!T)
-      T = attemptCombineAssembleBackend(ActionChain, Inputs,
-                                        CollapsedOffloadAction);
-    if (!T)
-      T = attemptCombineBackendCompile(ActionChain, Inputs,
-                                       CollapsedOffloadAction);
+      T = combineBackendCompile(ActionChain, Inputs, CollapsedOffloadAction);
     if (!T) {
       Inputs = &BaseAction->getInputs();
       T = TC.SelectTool(*BaseAction);
     }
 
-    attemptCombineWithPreprocess(T, Inputs, CollapsedOffloadAction);
+    combineWithPreprocessor(T, Inputs, CollapsedOffloadAction);
     return T;
   }
 };
@@ -2930,10 +3073,10 @@ public:
 /// Also, we need to add the offloading device kind, as the same tool chain can
 /// be used for host and device for some programming models, e.g. OpenMP.
 static std::string GetTriplePlusArchString(const ToolChain *TC,
-                                           const char *BoundArch,
+                                           StringRef BoundArch,
                                            Action::OffloadKind OffloadKind) {
   std::string TriplePlusArch = TC->getTriple().normalize();
-  if (BoundArch) {
+  if (!BoundArch.empty()) {
     TriplePlusArch += "-";
     TriplePlusArch += BoundArch;
   }
@@ -2943,7 +3086,7 @@ static std::string GetTriplePlusArchString(const ToolChain *TC,
 }
 
 InputInfo Driver::BuildJobsForAction(
-    Compilation &C, const Action *A, const ToolChain *TC, const char *BoundArch,
+    Compilation &C, const Action *A, const ToolChain *TC, StringRef BoundArch,
     bool AtTopLevel, bool MultipleArchs, const char *LinkingOutput,
     std::map<std::pair<const Action *, std::string>, InputInfo> &CachedResults,
     Action::OffloadKind TargetDeviceOffloadKind) const {
@@ -2961,7 +3104,7 @@ InputInfo Driver::BuildJobsForAction(
 }
 
 InputInfo Driver::BuildJobsForActionNoCache(
-    Compilation &C, const Action *A, const ToolChain *TC, const char *BoundArch,
+    Compilation &C, const Action *A, const ToolChain *TC, StringRef BoundArch,
     bool AtTopLevel, bool MultipleArchs, const char *LinkingOutput,
     std::map<std::pair<const Action *, std::string>, InputInfo> &CachedResults,
     Action::OffloadKind TargetDeviceOffloadKind) const {
@@ -2978,7 +3121,7 @@ InputInfo Driver::BuildJobsForActionNoCache(
     // b) Set a toolchain/architecture/kind for a device action;
     //    Device Action 1 -> OffloadAction -> Device Action 2
     //
-    // c) Specify a device dependences to a host action;
+    // c) Specify a device dependence to a host action;
     //    Device Action 1  _
     //                      \
     //      Host Action 1  ---> OffloadAction -> Host Action 2
@@ -3038,9 +3181,9 @@ InputInfo Driver::BuildJobsForActionNoCache(
 
   if (const BindArchAction *BAA = dyn_cast<BindArchAction>(A)) {
     const ToolChain *TC;
-    const char *ArchName = BAA->getArchName();
+    StringRef ArchName = BAA->getArchName();
 
-    if (ArchName)
+    if (!ArchName.empty())
       TC = &getToolChain(C.getArgs(),
                          computeTargetTriple(*this, DefaultTargetTriple,
                                              C.getArgs(), ArchName));
@@ -3058,7 +3201,7 @@ InputInfo Driver::BuildJobsForActionNoCache(
   const JobAction *JA = cast<JobAction>(A);
   ActionList CollapsedOffloadActions;
 
-  ToolSelector TS(JA, *TC, C, isSaveTempsEnabled(), embedBitcodeEnabled());
+  ToolSelector TS(JA, *TC, C, isSaveTempsEnabled(), embedBitcodeInObject());
   const Tool *T = TS.getTool(Inputs, CollapsedOffloadActions);
 
   if (!T)
@@ -3123,8 +3266,8 @@ InputInfo Driver::BuildJobsForActionNoCache(
     // If we have an unbundling job, we need to create results for all the
     // outputs. We also update the results cache so that other actions using
     // this unbundling action can get the right results.
-    for (auto &UI : UA->getDependingActionsInfo()) {
-      assert(UI.DependingOffloadKind != Action::OFK_None &&
+    for (auto &UI : UA->getDependentActionsInfo()) {
+      assert(UI.DependentOffloadKind != Action::OFK_None &&
              "Unbundling with no offloading??");
 
       // Unbundling actions are never at the top level. When we generate the
@@ -3132,11 +3275,11 @@ InputInfo Driver::BuildJobsForActionNoCache(
       // unbundling action does not change the type of the output which can
       // cause a overwrite.
       std::string OffloadingPrefix = Action::GetOffloadingFileNamePrefix(
-          UI.DependingOffloadKind,
-          UI.DependingToolChain->getTriple().normalize(),
+          UI.DependentOffloadKind,
+          UI.DependentToolChain->getTriple().normalize(),
           /*CreatePrefixForHost=*/true);
       auto CurI = InputInfo(
-          UA, GetNamedOutputPath(C, *UA, BaseInput, UI.DependingBoundArch,
+          UA, GetNamedOutputPath(C, *UA, BaseInput, UI.DependentBoundArch,
                                  /*AtTopLevel=*/false, MultipleArchs,
                                  OffloadingPrefix),
           BaseInput);
@@ -3146,8 +3289,8 @@ InputInfo Driver::BuildJobsForActionNoCache(
       // Get the unique string identifier for this dependence and cache the
       // result.
       CachedResults[{A, GetTriplePlusArchString(
-                            UI.DependingToolChain, UI.DependingBoundArch,
-                            UI.DependingOffloadKind)}] = CurI;
+                            UI.DependentToolChain, UI.DependentBoundArch,
+                            UI.DependentOffloadKind)}] = CurI;
     }
 
     // Now that we have all the results generated, select the one that should be
@@ -3198,7 +3341,7 @@ InputInfo Driver::BuildJobsForActionNoCache(
           C.getArgsForToolChain(TC, BoundArch, JA->getOffloadingDeviceKind()),
           LinkingOutput);
     else
-      T->ConstructJob(
+      T->ConstructJobMultipleOutputs(
           C, *JA, UnbundlingResults, InputInfos,
           C.getArgsForToolChain(TC, BoundArch, JA->getOffloadingDeviceKind()),
           LinkingOutput);
@@ -3246,7 +3389,7 @@ static const char *MakeCLOutputFilename(const ArgList &Args, StringRef ArgValue,
 
 const char *Driver::GetNamedOutputPath(Compilation &C, const JobAction &JA,
                                        const char *BaseInput,
-                                       const char *BoundArch, bool AtTopLevel,
+                                       StringRef BoundArch, bool AtTopLevel,
                                        bool MultipleArchs,
                                        StringRef OffloadingPrefix) const {
   llvm::PrettyStackTraceString CrashInfo("Computing output path");
@@ -3293,7 +3436,7 @@ const char *Driver::GetNamedOutputPath(Compilation &C, const JobAction &JA,
     std::pair<StringRef, StringRef> Split = Name.split('.');
     std::string TmpName = GetTemporaryPath(
         Split.first, types::getTypeTempSuffix(JA.getType(), IsCLMode()));
-    return C.addTempFile(C.getArgs().MakeArgString(TmpName.c_str()));
+    return C.addTempFile(C.getArgs().MakeArgString(TmpName));
   }
 
   SmallString<128> BasePath(BaseInput);
@@ -3308,7 +3451,7 @@ const char *Driver::GetNamedOutputPath(Compilation &C, const JobAction &JA,
   // Determine what the derived output name should be.
   const char *NamedOutput;
 
-  if (JA.getType() == types::TY_Object &&
+  if ((JA.getType() == types::TY_Object || JA.getType() == types::TY_LTO_BC) &&
       C.getArgs().hasArg(options::OPT__SLASH_Fo, options::OPT__SLASH_o)) {
     // The /Fo or /o flag decides the object filename.
     StringRef Val =
@@ -3335,14 +3478,14 @@ const char *Driver::GetNamedOutputPath(Compilation &C, const JobAction &JA,
     } else {
       SmallString<128> Output(getDefaultImageName());
       Output += OffloadingPrefix;
-      if (MultipleArchs && BoundArch) {
+      if (MultipleArchs && !BoundArch.empty()) {
         Output += "-";
         Output.append(BoundArch);
       }
       NamedOutput = C.getArgs().MakeArgString(Output.c_str());
     }
   } else if (JA.getType() == types::TY_PCH && IsCLMode()) {
-    NamedOutput = C.getArgs().MakeArgString(GetClPchPath(C, BaseName).c_str());
+    NamedOutput = C.getArgs().MakeArgString(GetClPchPath(C, BaseName));
   } else {
     const char *Suffix = types::getTypeTempSuffix(JA.getType(), IsCLMode());
     assert(Suffix && "All types used for output should have a suffix.");
@@ -3352,7 +3495,7 @@ const char *Driver::GetNamedOutputPath(Compilation &C, const JobAction &JA,
       End = BaseName.rfind('.');
     SmallString<128> Suffixed(BaseName.substr(0, End));
     Suffixed += OffloadingPrefix;
-    if (MultipleArchs && BoundArch) {
+    if (MultipleArchs && !BoundArch.empty()) {
       Suffixed += "-";
       Suffixed.append(BoundArch);
     }
@@ -3392,7 +3535,7 @@ const char *Driver::GetNamedOutputPath(Compilation &C, const JobAction &JA,
       std::pair<StringRef, StringRef> Split = Name.split('.');
       std::string TmpName = GetTemporaryPath(
           Split.first, types::getTypeTempSuffix(JA.getType(), IsCLMode()));
-      return C.addTempFile(C.getArgs().MakeArgString(TmpName.c_str()));
+      return C.addTempFile(C.getArgs().MakeArgString(TmpName));
     }
   }
 
@@ -3409,7 +3552,7 @@ const char *Driver::GetNamedOutputPath(Compilation &C, const JobAction &JA,
   }
 }
 
-std::string Driver::GetFilePath(const char *Name, const ToolChain &TC) const {
+std::string Driver::GetFilePath(StringRef Name, const ToolChain &TC) const {
   // Respect a limited subset of the '-Bprefix' functionality in GCC by
   // attempting to use this prefix when looking for file paths.
   for (const std::string &Dir : PrefixDirs) {
@@ -3439,16 +3582,16 @@ std::string Driver::GetFilePath(const char *Name, const ToolChain &TC) const {
 }
 
 void Driver::generatePrefixedToolNames(
-    const char *Tool, const ToolChain &TC,
+    StringRef Tool, const ToolChain &TC,
     SmallVectorImpl<std::string> &Names) const {
   // FIXME: Needs a better variable than DefaultTargetTriple
-  Names.emplace_back(DefaultTargetTriple + "-" + Tool);
+  Names.emplace_back((DefaultTargetTriple + "-" + Tool).str());
   Names.emplace_back(Tool);
 
   // Allow the discovery of tools prefixed with LLVM's default target triple.
   std::string LLVMDefaultTargetTriple = llvm::sys::getDefaultTargetTriple();
   if (LLVMDefaultTargetTriple != DefaultTargetTriple)
-    Names.emplace_back(LLVMDefaultTargetTriple + "-" + Tool);
+    Names.emplace_back((LLVMDefaultTargetTriple + "-" + Tool).str());
 }
 
 static bool ScanDirForExecutable(SmallString<128> &Dir,
@@ -3462,8 +3605,7 @@ static bool ScanDirForExecutable(SmallString<128> &Dir,
   return false;
 }
 
-std::string Driver::GetProgramPath(const char *Name,
-                                   const ToolChain &TC) const {
+std::string Driver::GetProgramPath(StringRef Name, const ToolChain &TC) const {
   SmallVector<std::string, 2> TargetSpecificExecutables;
   generatePrefixedToolNames(Name, TC, TargetSpecificExecutables);
 
@@ -3475,7 +3617,7 @@ std::string Driver::GetProgramPath(const char *Name,
       if (ScanDirForExecutable(P, TargetSpecificExecutables))
         return P.str();
     } else {
-      SmallString<128> P(PrefixDir + Name);
+      SmallString<128> P((PrefixDir + Name).str());
       if (llvm::sys::fs::can_execute(Twine(P)))
         return P.str();
     }
@@ -3497,8 +3639,7 @@ std::string Driver::GetProgramPath(const char *Name,
   return Name;
 }
 
-std::string Driver::GetTemporaryPath(StringRef Prefix,
-                                     const char *Suffix) const {
+std::string Driver::GetTemporaryPath(StringRef Prefix, StringRef Suffix) const {
   SmallString<128> Path;
   std::error_code EC = llvm::sys::fs::createTemporaryFile(Prefix, Suffix, Path);
   if (EC) {
@@ -3578,6 +3719,9 @@ const ToolChain &Driver::getToolChain(const ArgList &Args,
     case llvm::Triple::NaCl:
       TC = new toolchains::NaClToolChain(*this, Target, Args);
       break;
+    case llvm::Triple::Fuchsia:
+      TC = new toolchains::Fuchsia(*this, Target, Args);
+      break;
     case llvm::Triple::Solaris:
       TC = new toolchains::Solaris(*this, Target, Args);
       break;
@@ -3606,11 +3750,11 @@ const ToolChain &Driver::getToolChain(const ArgList &Args,
         break;
       }
       break;
-    case llvm::Triple::CUDA:
-      TC = new toolchains::CudaToolChain(*this, Target, Args);
-      break;
     case llvm::Triple::PS4:
       TC = new toolchains::PS4CPU(*this, Target, Args);
+      break;
+    case llvm::Triple::Contiki:
+      TC = new toolchains::Contiki(*this, Target, Args);
       break;
     default:
       // Of these targets, Hexagon is the only one that might have
@@ -3618,6 +3762,9 @@ const ToolChain &Driver::getToolChain(const ArgList &Args,
       switch (Target.getArch()) {
       case llvm::Triple::tce:
         TC = new toolchains::TCEToolChain(*this, Target, Args);
+        break;
+      case llvm::Triple::tcele:
+        TC = new toolchains::TCELEToolChain(*this, Target, Args);
         break;
       case llvm::Triple::hexagon:
         TC = new toolchains::HexagonToolChain(*this, Target, Args);
@@ -3644,6 +3791,12 @@ const ToolChain &Driver::getToolChain(const ArgList &Args,
       }
     }
   }
+
+  // Intentionally omitted from the switch above: llvm::Triple::CUDA.  CUDA
+  // compiles always need two toolchains, the CUDA toolchain and the host
+  // toolchain.  So the only valid way to create a CUDA toolchain is via
+  // CreateOffloadingDeviceToolChains.
+
   return *TC;
 }
 
@@ -3666,36 +3819,35 @@ bool Driver::ShouldUseClangCompiler(const JobAction &JA) const {
 ///
 /// \return True if the entire string was parsed (9.2), or all groups were
 /// parsed (10.3.5extrastuff).
-bool Driver::GetReleaseVersion(const char *Str, unsigned &Major,
-                               unsigned &Minor, unsigned &Micro,
-                               bool &HadExtra) {
+bool Driver::GetReleaseVersion(StringRef Str, unsigned &Major, unsigned &Minor,
+                               unsigned &Micro, bool &HadExtra) {
   HadExtra = false;
 
   Major = Minor = Micro = 0;
-  if (*Str == '\0')
+  if (Str.empty())
     return false;
 
-  char *End;
-  Major = (unsigned)strtol(Str, &End, 10);
-  if (*Str != '\0' && *End == '\0')
+  if (Str.consumeInteger(10, Major))
+    return false;
+  if (Str.empty())
     return true;
-  if (*End != '.')
+  if (Str[0] != '.')
     return false;
 
-  Str = End + 1;
-  Minor = (unsigned)strtol(Str, &End, 10);
-  if (*Str != '\0' && *End == '\0')
-    return true;
-  if (*End != '.')
-    return false;
+  Str = Str.drop_front(1);
 
-  Str = End + 1;
-  Micro = (unsigned)strtol(Str, &End, 10);
-  if (*Str != '\0' && *End == '\0')
-    return true;
-  if (Str == End)
+  if (Str.consumeInteger(10, Minor))
     return false;
-  HadExtra = true;
+  if (Str.empty())
+    return true;
+  if (Str[0] != '.')
+    return false;
+  Str = Str.drop_front(1);
+
+  if (Str.consumeInteger(10, Micro))
+    return false;
+  if (!Str.empty())
+    HadExtra = true;
   return true;
 }
 
@@ -3705,21 +3857,22 @@ bool Driver::GetReleaseVersion(const char *Str, unsigned &Major,
 ///
 /// \return True if the entire string was parsed and there are
 /// no extra characters remaining at the end.
-bool Driver::GetReleaseVersion(const char *Str,
+bool Driver::GetReleaseVersion(StringRef Str,
                                MutableArrayRef<unsigned> Digits) {
-  if (*Str == '\0')
+  if (Str.empty())
     return false;
 
-  char *End;
   unsigned CurDigit = 0;
   while (CurDigit < Digits.size()) {
-    unsigned Digit = (unsigned)strtol(Str, &End, 10);
-    Digits[CurDigit] = Digit;
-    if (*Str != '\0' && *End == '\0')
-      return true;
-    if (*End != '.' || Str == End)
+    unsigned Digit;
+    if (Str.consumeInteger(10, Digit))
       return false;
-    Str = End + 1;
+    Digits[CurDigit] = Digit;
+    if (Str.empty())
+      return true;
+    if (Str[0] != '.')
+      return false;
+    Str = Str.drop_front(1);
     CurDigit++;
   }
 

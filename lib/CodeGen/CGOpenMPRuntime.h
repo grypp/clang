@@ -113,8 +113,7 @@ protected:
   /// \brief Creates offloading entry for the provided entry ID \a ID,
   /// address \a Addr and size \a Size.
   virtual void createOffloadEntry(llvm::Constant *ID, llvm::Constant *Addr,
-                                  uint64_t Size,
-                                  llvm::ConstantInt *Flags = nullptr);
+                                  uint64_t Size, uint64_t Flags = 0u);
 
   /// \brief Helper to emit outlined function for 'target' directive.
   /// \param D Directive to emit.
@@ -314,7 +313,7 @@ private:
     /// \brief Base class of the entries info.
     class OffloadEntryInfo {
       // \brief Flags associated the device global.
-      llvm::ConstantInt *Flags;
+      uint64_t Flags;
 
     public:
       /// \brief Kind of a given entry. Currently, only target regions are
@@ -331,16 +330,16 @@ private:
       };
 
       OffloadEntryInfo()
-          : Flags(nullptr), Order(~0u), Kind(OFFLOAD_ENTRY_INFO_INVALID) {}
+          : Flags(0u), Order(~0u), Kind(OFFLOAD_ENTRY_INFO_INVALID) {}
       explicit OffloadEntryInfo(OffloadingEntryInfoKinds Kind, unsigned Order,
-                                llvm::ConstantInt *Flags)
+                                uint64_t Flags)
           : Flags(Flags), Order(Order), Kind(Kind) {}
 
       bool isValid() const { return Order != ~0u; }
       unsigned getOrder() const { return Order; }
       OffloadingEntryInfoKinds getKind() const { return Kind; }
-      llvm::ConstantInt *getFlags() const { return Flags; }
-      void setFlags(llvm::ConstantInt *NewFlags) { Flags = NewFlags; }
+      uint64_t getFlags() const { return Flags; }
+      void setFlags(uint64_t NewFlags) { Flags = NewFlags; }
       static bool classof(const OffloadEntryInfo *Info) { return true; }
 
     protected:
@@ -372,12 +371,11 @@ private:
     public:
       OffloadEntryInfoTargetRegion()
           : OffloadEntryInfo(OFFLOAD_ENTRY_INFO_TARGET_REGION, ~0u,
-                             /*Flags=*/nullptr),
+                             /*Flags=*/0u),
             Addr(nullptr), ID(nullptr) {}
       explicit OffloadEntryInfoTargetRegion(unsigned Order,
                                             llvm::Constant *Addr,
-                                            llvm::Constant *ID,
-                                            llvm::ConstantInt *Flags)
+                                            llvm::Constant *ID, uint64_t Flags)
           : OffloadEntryInfo(OFFLOAD_ENTRY_INFO_TARGET_REGION, Order, Flags),
             Addr(Addr), ID(ID) {}
 
@@ -403,7 +401,7 @@ private:
     void registerTargetRegionEntryInfo(unsigned DeviceID, unsigned FileID,
                                        StringRef ParentName, unsigned LineNum,
                                        llvm::Constant *Addr, llvm::Constant *ID,
-                                       llvm::ConstantInt *Flags);
+                                       uint64_t Flags);
     /// \brief Return true if a target region entry with the provided
     /// information exists.
     bool hasTargetRegionEntryInfo(unsigned DeviceID, unsigned FileID,
@@ -430,12 +428,11 @@ private:
     public:
       OffloadEntryInfoDeviceGlobalVar()
           : OffloadEntryInfo(OFFLOAD_ENTRY_INFO_DEVICE_GLOBAL_VAR, ~0u,
-                             /*Flags=*/nullptr),
+                             /*Flags=*/0u),
             Addr(nullptr) {}
       explicit OffloadEntryInfoDeviceGlobalVar(unsigned Order,
                                                llvm::Constant *Addr,
-                                               QualType Ty,
-                                               llvm::ConstantInt *Flags)
+                                               QualType Ty, uint64_t Flags)
           : OffloadEntryInfo(OFFLOAD_ENTRY_INFO_DEVICE_GLOBAL_VAR, Order,
                              Flags),
             Addr(Addr), Ty(Ty) {}
@@ -447,8 +444,8 @@ private:
       }
       QualType getType() const { return Ty; }
       void setType(QualType QTy) { Ty = QTy; }
-      bool getOnlyMetadataFlag(){ return OnlyMetadataFlag; }
-      void setOnlyMetadataFlag(bool B){ OnlyMetadataFlag = B; }
+      bool getOnlyMetadataFlag() { return OnlyMetadataFlag; }
+      void setOnlyMetadataFlag(bool B) { OnlyMetadataFlag = B; }
       static bool classof(const OffloadEntryInfo *Info) {
         return Info->getKind() == OFFLOAD_ENTRY_INFO_DEVICE_GLOBAL_VAR;
       }
@@ -459,7 +456,7 @@ private:
     /// \brief Register device global variable entry.
     void registerDeviceGlobalVarEntryInfo(StringRef MangledName,
                                           llvm::Constant *Addr, QualType Ty,
-                                          llvm::ConstantInt *Flags,
+                                          uint64_t Flags,
                                           bool isExternallyVisible);
     /// \brief Return true if a device global variable entry with the provided
     /// information exists.
@@ -482,10 +479,10 @@ private:
     public:
       OffloadEntryInfoDeviceFunction()
           : OffloadEntryInfo(OFFLOAD_ENTRY_INFO_DEVICE_FUNCTION, ~0u,
-                             /*Flags=*/nullptr) {}
+                             /*Flags=*/0u) {}
       explicit OffloadEntryInfoDeviceFunction(bool IsRegistered)
           : OffloadEntryInfo(OFFLOAD_ENTRY_INFO_DEVICE_FUNCTION, ~0u,
-                             /*Flags=*/nullptr),
+                             /*Flags=*/0u),
             IsRegistered(IsRegistered) {}
 
       bool isRegistered() const { return IsRegistered; }

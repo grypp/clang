@@ -35,7 +35,7 @@ int foo(int n) {
   {
   }
 
-  // TCHECK:  define void @__omp_offloading_{{.+}}()
+  // TCHECK:  define {{.*}}void @__omp_offloading_{{.+}}()
   // TCHECK:  [[A:%.+]] = alloca i{{[0-9]+}},
   // TCHECK-NOT: store {{.+}}, {{.+}} [[A]],
   // TCHECK:  ret void  
@@ -45,7 +45,7 @@ int foo(int n) {
     a = 1;
   }
 
-  // TCHECK:  define void @__omp_offloading_{{.+}}()
+  // TCHECK:  define {{.*}}void @__omp_offloading_{{.+}}()
   // TCHECK:  [[A:%.+]] = alloca i{{[0-9]+}},
   // TCHECK:  store i{{[0-9]+}} 1, i{{[0-9]+}}* [[A]],
   // TCHECK:  ret void
@@ -56,7 +56,7 @@ int foo(int n) {
     aa = 1;
   }
 
-  // TCHECK:  define void @__omp_offloading_{{.+}}()
+  // TCHECK:  define {{.*}}void @__omp_offloading_{{.+}}()
   // TCHECK:  [[A:%.+]] = alloca i{{[0-9]+}},
   // TCHECK:  [[A2:%.+]] = alloca i{{[0-9]+}},
   // TCHECK:  store i{{[0-9]+}} 1, i{{[0-9]+}}* [[A]],
@@ -75,7 +75,7 @@ int foo(int n) {
   }
   // make sure that private variables are generated in all cases and that we use those instances for operations inside the
   // target region
-  // TCHECK:  define void @__omp_offloading_{{.+}}(i{{[0-9]+}} [[VLA:%.+]], i{{[0-9]+}} [[VLA1:%.+]], i{{[0-9]+}} [[VLA3:%.+]])
+  // TCHECK:  define {{.*}}void @__omp_offloading_{{.+}}(i{{[0-9]+}} [[VLA:%.+]], i{{[0-9]+}} [[VLA1:%.+]], i{{[0-9]+}} [[VLA3:%.+]])
   // TCHECK:  [[VLA_ADDR:%.+]] = alloca i{{[0-9]+}},
   // TCHECK:  [[VLA_ADDR2:%.+]] = alloca i{{[0-9]+}},
   // TCHECK:  [[VLA_ADDR4:%.+]] = alloca i{{[0-9]+}},
@@ -169,7 +169,7 @@ int fstatic(int n) {
   return a;
 }
 
-// TCHECK: define void @__omp_offloading_{{.+}}()
+// TCHECK: define {{.*}}void @__omp_offloading_{{.+}}()
 // TCHECK:  [[A:%.+]] = alloca i{{[0-9]+}},
 // TCHECK:  [[A2:%.+]] = alloca i{{[0-9]+}},
 // TCHECK:  [[A3:%.+]] = alloca i{{[0-9]+}},
@@ -197,7 +197,7 @@ struct S1 {
     return c[1][1] + (int)b;
   }
 
-  // TCHECK: define void @__omp_offloading_{{.+}}([[S1]]* [[TH:%.+]], i{{[0-9]+}} [[VLA:%.+]], i{{[0-9]+}} [[VLA1:%.+]])
+  // TCHECK: define {{.*}}void @__omp_offloading_{{.+}}([[S1]]* [[TH:%.+]], i{{[0-9]+}} [[VLA:%.+]], i{{[0-9]+}} [[VLA1:%.+]])
   // TCHECK: [[TH_ADDR:%.+]] = alloca [[S1]]*,
   // TCHECK: [[VLA_ADDR:%.+]] = alloca i{{[0-9]+}},
   // TCHECK: [[VLA_ADDR2:%.+]] = alloca i{{[0-9]+}},
@@ -251,7 +251,7 @@ int bar(int n){
 }
 
 // template
-// TCHECK: define void @__omp_offloading_{{.+}}()
+// TCHECK: define {{.*}}void @__omp_offloading_{{.+}}()
 // TCHECK: [[A:%.+]] = alloca i{{[0-9]+}},
 // TCHECK: [[A2:%.+]] = alloca i{{[0-9]+}},
 // TCHECK: [[B:%.+]] = alloca [10 x i{{[0-9]+}}],

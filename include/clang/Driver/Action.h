@@ -99,7 +99,7 @@ private:
   /// actions that depend on it. This is true by default and set to false when
   /// the action is used by two different tool chains, which is enabled by the
   /// offloading support implementation.
-  bool CanBeCollapsedWithDependingAction = true;
+  bool CanBeCollapsedWithNextDependentAction = true;
 
 protected:
   ///
@@ -146,12 +146,12 @@ public:
   }
 
   /// Mark this action as not legal to collapse.
-  void setCannotBeCollapsedWithDependingAction() {
-    CanBeCollapsedWithDependingAction = false;
+  void setCannotBeCollapsedWithNextDependentAction() {
+    CanBeCollapsedWithNextDependentAction = false;
   }
   /// Return true if this function can be collapsed with others.
-  bool isCollapsingWithDependingActionLegal() const {
-    return CanBeCollapsedWithDependingAction;
+  bool isCollapsingWithNextDependentActionLegal() const {
+    return CanBeCollapsedWithNextDependentAction;
   }
 
   /// Return a string containing the offload kind of the action.
@@ -213,12 +213,12 @@ class BindArchAction : public Action {
   virtual void anchor();
   /// The architecture to bind, or 0 if the default architecture
   /// should be bound.
-  const char *ArchName;
+  StringRef ArchName;
 
 public:
-  BindArchAction(Action *Input, const char *ArchName);
+  BindArchAction(Action *Input, StringRef ArchName);
 
-  const char *getArchName() const { return ArchName; }
+  StringRef getArchName() const { return ArchName; }
 
   static bool classof(const Action *A) {
     return A->getKind() == BindArchClass;
@@ -506,39 +506,39 @@ class OffloadUnbundlingJobAction final : public JobAction {
 public:
   /// Type that provides information about the actions that depend on this
   /// unbundling action.
-  struct DependingActionInfoTy final {
-    /// \brief The tool chain of the depending action.
-    const ToolChain *DependingToolChain = nullptr;
-    /// \brief The bound architecture of the depending action.
-    const char *DependingBoundArch = nullptr;
-    /// \brief The offload kind of the depending action.
-    const OffloadKind DependingOffloadKind = OFK_None;
-    DependingActionInfoTy(const ToolChain *DependingToolChain,
-                          const char *DependingBoundArch,
-                          const OffloadKind DependingOffloadKind)
-        : DependingToolChain(DependingToolChain),
-          DependingBoundArch(DependingBoundArch),
-          DependingOffloadKind(DependingOffloadKind){};
+  struct DependentActionInfo final {
+    /// \brief The tool chain of the dependent action.
+    const ToolChain *DependentToolChain = nullptr;
+    /// \brief The bound architecture of the dependent action.
+    StringRef DependentBoundArch;
+    /// \brief The offload kind of the dependent action.
+    const OffloadKind DependentOffloadKind = OFK_None;
+    DependentActionInfo(const ToolChain *DependentToolChain,
+                        StringRef DependentBoundArch,
+                        const OffloadKind DependentOffloadKind)
+        : DependentToolChain(DependentToolChain),
+          DependentBoundArch(DependentBoundArch),
+          DependentOffloadKind(DependentOffloadKind){};
   };
 
 private:
-  /// Constainer that kepps information about each dependence of this unbundling
+  /// Container that keeps information about each dependence of this unbundling
   /// action.
-  SmallVector<DependingActionInfoTy, 6> DependingActionInfo;
+  SmallVector<DependentActionInfo, 6> DependentActionInfoArray;
 
 public:
   // Offloading unbundling doesn't change the type of output.
   OffloadUnbundlingJobAction(Action *Input);
 
-  /// Register information about a depending action.
-  void registerDependingActionInfo(const ToolChain *TC, const char *BoundArch,
+  /// Register information about a dependent action.
+  void registerDependentActionInfo(const ToolChain *TC, StringRef BoundArch,
                                    OffloadKind Kind) {
-    DependingActionInfo.push_back({TC, BoundArch, Kind});
+    DependentActionInfoArray.push_back({TC, BoundArch, Kind});
   }
 
   /// Return the information about all depending actions.
-  ArrayRef<DependingActionInfoTy> getDependingActionsInfo() const {
-    return DependingActionInfo;
+  ArrayRef<DependentActionInfo> getDependentActionsInfo() const {
+    return DependentActionInfoArray;
   }
 
   static bool classof(const Action *A) {

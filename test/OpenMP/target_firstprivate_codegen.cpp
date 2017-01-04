@@ -33,15 +33,15 @@ struct TT{
 // TCHECK:  [[S1:%.+]] = type { double }
 
 // CHECK-DAG:  [[SIZET:@.+]] = private unnamed_addr constant [1 x i{{32|64}}] [i[[SZ:32|64]] 4]
-// CHECK:  [[MAPT:@.+]] = private unnamed_addr constant [1 x i32] [i32 288]
-// CHECK-DAG:  [[MAPT2:@.+]] = private unnamed_addr constant [9 x i32] [i32 288, i32 161, i32 288, i32 161, i32 161, i32 288, i32 288, i32 161, i32 161]
+// CHECK:  [[MAPT:@.+]] = private unnamed_addr constant [1 x i32] [i32 800]
+// CHECK-DAG:  [[MAPT2:@.+]] = private unnamed_addr constant [9 x i32] [i32 800, i32 673, i32 288, i32 673, i32 673, i32 288, i32 288, i32 673, i32 673]
 // CHECK-DAG:  [[SIZET3:@.+]] = private unnamed_addr constant [1 x i{{32|64}}] zeroinitializer
-// CHECK-DAG:  [[MAPT3:@.+]] = private unnamed_addr constant [1 x i32] [i32 32]
-// CHECK-DAG:  [[MAPT4:@.+]] = private unnamed_addr constant [5 x i32] [i32 35, i32 288, i32 288, i32 288, i32 161]
+// CHECK-DAG:  [[MAPT3:@.+]] = private unnamed_addr constant [1 x i32] [i32 544]
+// CHECK-DAG:  [[MAPT4:@.+]] = private unnamed_addr constant [5 x i32] [i32 547, i32 800, i32 288, i32 288, i32 673]
 // CHECK-DAG:  [[SIZET5:@.+]] = private unnamed_addr constant [3 x i{{32|64}}] [i[[SZ]] 4, i[[SZ]] 1, i[[SZ]] 40]
-// CHECK-DAG:  [[MAPT5:@.+]] = private unnamed_addr constant [3 x i32] [i32 288, i32 288, i32 161]
+// CHECK-DAG:  [[MAPT5:@.+]] = private unnamed_addr constant [3 x i32] [i32 800, i32 800, i32 673]
 // CHECK-DAG:  [[SIZET6:@.+]] = private unnamed_addr constant [2 x i{{32|64}}] [i[[SZ]] 4, i[[SZ]] 40]
-// CHECK-DAG:  [[MAPT6:@.+]] = private unnamed_addr constant [2 x i32] [i32 288, i32 161]
+// CHECK-DAG:  [[MAPT6:@.+]] = private unnamed_addr constant [2 x i32] [i32 800, i32 673]
 
 
 // CHECK: define {{.*}}[[FOO:@.+]](
@@ -103,7 +103,7 @@ int foo(int n, double *ptr) {
   // CHECK:  [[PTR_GEP_ARG:%.+]] = getelementptr inbounds [1 x i8*], [1 x i8*]* [[PTR_ARR]], i{{[0-9]+}} 0, i{{[0-9]+}} 0
   // CHECK:  {{.+}} = call i32 @__tgt_target(i32 -1, {{.+}}, i32 1, i8** [[BASE_PTR_GEP_ARG]], i8** [[PTR_GEP_ARG]], i[[SZ]]* getelementptr inbounds ([1 x i[[SZ]]], [1 x i[[SZ]]]* [[SIZET]], i32 0, i32 0), i32* getelementptr inbounds ([1 x i32], [1 x i32]* [[MAPT]], i32 0, i32 0))
   
-  // TCHECK:  define void @__omp_offloading_{{.+}}(i{{[0-9]+}} [[A_IN:%.+]])
+  // TCHECK:  define {{.*}}void @__omp_offloading_{{.+}}(i{{[0-9]+}} [[A_IN:%.+]])
   // TCHECK:  [[A_ADDR:%.+]] = alloca i{{[0-9]+}},
   // TCHECK-NOT: alloca i{{[0-9]+}},
   // TCHECK:  store i{{[0-9]+}} [[A_IN]], i{{[0-9]+}}* [[A_ADDR]],
@@ -222,7 +222,7 @@ int foo(int n, double *ptr) {
   
   // make sure that firstprivate variables are generated in all cases and that we use those instances for operations inside the
   // target region
-  // TCHECK:  define void @__omp_offloading_{{.+}}(i{{[0-9]+}} [[A2_IN:%.+]], [10 x float]* {{.+}} [[B_IN:%.+]], i{{[0-9]+}} [[BN_SZ:%.+]], float* {{.+}} [[BN_IN:%.+]], [5 x [10 x double]]* {{.+}} [[C_IN:%.+]], i{{[0-9]+}} [[CN_SZ1:%.+]], i{{[0-9]+}} [[CN_SZ2:%.+]], double* {{.+}} [[CN_IN:%.+]], [[TT]]* {{.+}} [[D_IN:%.+]])
+  // TCHECK:  define {{.*}}void @__omp_offloading_{{.+}}(i{{[0-9]+}} [[A2_IN:%.+]], [10 x float]* {{.+}} [[B_IN:%.+]], i{{[0-9]+}} [[BN_SZ:%.+]], float* [[BN_IN:%.+]], [5 x [10 x double]]* {{.+}} [[C_IN:%.+]], i{{[0-9]+}} [[CN_SZ1:%.+]], i{{[0-9]+}} [[CN_SZ2:%.+]], double* [[CN_IN:%.+]], [[TT]]* {{.+}} [[D_IN:%.+]])
   // TCHECK:  [[A2_ADDR:%.+]] = alloca i{{[0-9]+}},
   // TCHECK:  [[B_ADDR:%.+]] = alloca [10 x float]*,
   // TCHECK:  [[VLA_ADDR:%.+]] = alloca i{{[0-9]+}},
@@ -311,7 +311,7 @@ int foo(int n, double *ptr) {
   // CHECK:  [[PTR_GEP_ARG3:%.+]] = getelementptr inbounds [1 x i8*], [1 x i8*]* [[PTR_ARR3]], i{{[0-9]+}} 0, i{{[0-9]+}} 0
   // CHECK: {{.+}} = call i32 @__tgt_target(i32 -1, {{.+}}, i32 1, i8** [[BASE_PTR_GEP_ARG3]], i8** [[PTR_GEP_ARG3]], i[[SZ]]* getelementptr inbounds ([1 x i[[SZ]]], [1 x i[[SZ]]]* [[SIZET3]], i32 0, i32 0), i32* getelementptr inbounds ([1 x i32], [1 x i32]* [[MAPT3]], i32 0, i32 0))
 
-  // TCHECK:  define void @__omp_offloading_{{.+}}(double* [[PTR_IN:%.+]])
+  // TCHECK:  define {{.*}}void @__omp_offloading_{{.+}}(double* [[PTR_IN:%.+]])
   // TCHECK:  [[PTR_ADDR:%.+]] = alloca double*,
   // TCHECK-NOT: alloca double*,
   // TCHECK:  store double* [[PTR_IN]], double** [[PTR_ADDR]],
@@ -351,7 +351,7 @@ int fstatic(int n) {
   return a;
 }
 
-// TCHECK: define void @__omp_offloading_{{.+}}(i{{[0-9]+}} [[A_IN:%.+]], i{{[0-9]+}} [[A3_IN:%.+]], [10 x i{{[0-9]+}}]*{{.+}} [[B_IN:%.+]])
+// TCHECK: define {{.*}}void @__omp_offloading_{{.+}}(i{{[0-9]+}} [[A_IN:%.+]], i{{[0-9]+}} [[A3_IN:%.+]], [10 x i{{[0-9]+}}]*{{.+}} [[B_IN:%.+]])
 // TCHECK:  [[A_ADDR:%.+]] = alloca i{{[0-9]+}},
 // TCHECK:  [[A3_ADDR:%.+]] = alloca i{{[0-9]+}},
 // TCHECK:  [[B_ADDR:%.+]] = alloca [10 x i{{[0-9]+}}]*,
@@ -445,7 +445,7 @@ struct S1 {
   // only check that we use the map types stored in the global variable
   // CHECK:  call i32 @__tgt_target(i32 -1, {{.+}}, i32 5, i8** {{.+}}, i8** {{.+}}, i{{[0-9]+}}* {{.+}}, i32* getelementptr inbounds ([5 x i32], [5 x i32]* [[MAPT4]], i32 0, i32 0))
   
-  // TCHECK: define void @__omp_offloading_{{.+}}([[S1]]* [[TH:%.+]], i{{[0-9]+}} [[B_IN:%.+]], i{{[0-9]+}} [[VLA:%.+]], i{{[0-9]+}} [[VLA1:%.+]], i{{[0-9]+}}{{.+}} [[C_IN:%.+]])
+  // TCHECK: define {{.*}}void @__omp_offloading_{{.+}}([[S1]]* [[TH:%.+]], i{{[0-9]+}} [[B_IN:%.+]], i{{[0-9]+}} [[VLA:%.+]], i{{[0-9]+}} [[VLA1:%.+]], i{{[0-9]+}}{{.+}} [[C_IN:%.+]])
   // TCHECK:  [[TH_ADDR:%.+]] = alloca [[S1]]*,
   // TCHECK:  [[B_ADDR:%.+]] = alloca i{{[0-9]+}},
   // TCHECK:  [[VLA_ADDR:%.+]] = alloca i{{[0-9]+}},
@@ -557,7 +557,7 @@ int bar(int n, double *ptr){
 // CHECK:  call i32 @__tgt_target(i32 -1, {{.+}}, i32 2, i8** {{.+}}, i8** {{.+}}, i[[SZ]]* getelementptr inbounds ([2 x i[[SZ]]], [2 x i[[SZ]]]* [[SIZET6]], i32 0, i32 0), i32* getelementptr inbounds ([2 x i32], [2 x i32]* [[MAPT6]], i32 0, i32 0))
 
 
-// TCHECK: define void @__omp_offloading_{{.+}}(i{{[0-9]+}} [[A_IN:%.+]], [10 x i{{[0-9]+}}]*{{.+}} [[B_IN:%.+]])
+// TCHECK: define {{.*}}void @__omp_offloading_{{.+}}(i{{[0-9]+}} [[A_IN:%.+]], [10 x i{{[0-9]+}}]*{{.+}} [[B_IN:%.+]])
 // TCHECK:  [[A_ADDR:%.+]] = alloca i{{[0-9]+}},
 // TCHECK:  [[B_ADDR:%.+]] = alloca [10 x i{{[0-9]+}}]*,
 // TCHECK-NOT: alloca i{{[0-9]+}},

@@ -113,16 +113,28 @@ public:
       Diag.Report(WarnLoc, WarnID) << PD->getShortDescription()
                                    << PD->path.back()->getRanges();
 
+      // First, add extra notes, even if paths should not be included.
+      for (const auto &Piece : PD->path) {
+        if (!isa<PathDiagnosticNotePiece>(Piece.get()))
+          continue;
+
+        SourceLocation NoteLoc = Piece->getLocation().asLocation();
+        Diag.Report(NoteLoc, NoteID) << Piece->getString()
+                                     << Piece->getRanges();
+      }
+
       if (!IncludePath)
         continue;
 
+      // Then, add the path notes if necessary.
       PathPieces FlatPath = PD->path.flatten(/*ShouldFlattenMacros=*/true);
-      for (PathPieces::const_iterator PI = FlatPath.begin(),
-                                      PE = FlatPath.end();
-           PI != PE; ++PI) {
-        SourceLocation NoteLoc = (*PI)->getLocation().asLocation();
-        Diag.Report(NoteLoc, NoteID) << (*PI)->getString()
-                                     << (*PI)->getRanges();
+      for (const auto &Piece : FlatPath) {
+        if (isa<PathDiagnosticNotePiece>(Piece.get()))
+          continue;
+
+        SourceLocation NoteLoc = Piece->getLocation().asLocation();
+        Diag.Report(NoteLoc, NoteID) << Piece->getString()
+                                     << Piece->getRanges();
       }
     }
   }
@@ -189,7 +201,7 @@ public:
     DigestAnalyzerOptions();
     if (Opts->PrintStats) {
       llvm::EnableStatistics(false);
-      TUTotalTimer = new llvm::Timer("Analyzer Total Time");
+      TUTotalTimer = new llvm::Timer("time", "Analyzer Total Time");
     }
   }
 

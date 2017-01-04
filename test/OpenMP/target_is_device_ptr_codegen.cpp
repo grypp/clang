@@ -35,7 +35,7 @@ double *g;
 // CK1: [[SIZES06:@.+]] = {{.+}}constant [2 x i[[sz]]] [i[[sz]] {{8|4}}, i[[sz]] {{8|4}}]
 // CK1: [[TYPES06:@.+]] = {{.+}}constant [2 x i32] [i32 288, i32 288]
 
-// CK1-LABEL: @_Z3foo
+// CK1-LABEL: @_Z3foo{{.*}}(
 template<typename T>
 void foo(float *&lr, T *&tr) {
   float *l;
@@ -205,7 +205,7 @@ struct ST {
   double *&b;
   ST(double *&b) : a(0), b(b) {}
 
-  // CK2-LABEL: @{{.*}}foo{{.*}}
+  // CK2-LABEL: @{{.*}}foo{{.*}}(
   void foo(double *&arg) {
     int *la = 0;
 

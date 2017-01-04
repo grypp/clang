@@ -119,6 +119,24 @@ TEST_F(CleanupTest, EmptyNamespaceWithCommentsBreakBeforeBrace) {
   EXPECT_EQ(Expected, Result);
 }
 
+TEST_F(CleanupTest, EmptyNamespaceAroundConditionalCompilation) {
+  std::string Code = "#ifdef A\n"
+                     "int a;\n"
+                     "int b;\n"
+                     "#else\n"
+                     "#endif\n"
+                     "namespace {}";
+  std::string Expected = "#ifdef A\n"
+                         "int a;\n"
+                         "int b;\n"
+                         "#else\n"
+                         "#endif\n";
+  std::vector<tooling::Range> Ranges(1, tooling::Range(0, Code.size()));
+  FormatStyle Style = getLLVMStyle();
+  std::string Result = cleanup(Code, Ranges, Style);
+  EXPECT_EQ(Expected, Result);
+}
+
 TEST_F(CleanupTest, CtorInitializationSimpleRedundantComma) {
   std::string Code = "class A {\nA() : , {} };";
   std::string Expected = "class A {\nA()  {} };";
@@ -130,6 +148,16 @@ TEST_F(CleanupTest, CtorInitializationSimpleRedundantComma) {
 
   Code = "class A {\nA() :,,,,{} };";
   Expected = "class A {\nA() {} };";
+  EXPECT_EQ(Expected, cleanupAroundOffsets({15}, Code));
+}
+
+TEST_F(CleanupTest, CtorInitializationSimpleRedundantColon) {
+  std::string Code = "class A {\nA() : =default; };";
+  std::string Expected = "class A {\nA()  =default; };";
+  EXPECT_EQ(Expected, cleanupAroundOffsets({15}, Code));
+
+  Code = "class A {\nA() : , =default; };";
+  Expected = "class A {\nA()  =default; };";
   EXPECT_EQ(Expected, cleanupAroundOffsets({15}, Code));
 }
 
@@ -221,6 +249,14 @@ TEST_F(CleanupTest, RemoveCommentsAroundDeleteCode) {
   Code = "class A {\nA() : , // comment\n y(1),{} };";
   Expected = "class A {\nA() :  // comment\n y(1){} };";
   EXPECT_EQ(Expected, cleanupAroundOffsets({17}, Code));
+
+  Code = "class A {\nA() // comment\n : ,,{} };";
+  Expected = "class A {\nA() // comment\n {} };";
+  EXPECT_EQ(Expected, cleanupAroundOffsets({30}, Code));
+
+  Code = "class A {\nA() // comment\n : ,,=default; };";
+  Expected = "class A {\nA() // comment\n =default; };";
+  EXPECT_EQ(Expected, cleanupAroundOffsets({30}, Code));
 }
 
 TEST_F(CleanupTest, CtorInitializerInNamespace) {
@@ -709,13 +745,21 @@ TEST_F(CleanUpReplacementsTest, EmptyCode) {
   EXPECT_EQ(Expected, apply(Code, Replaces));
 }
 
-// FIXME: although this case does not crash, the insertion is wrong. A '\n'
-// should be inserted between the two #includes.
 TEST_F(CleanUpReplacementsTest, NoNewLineAtTheEndOfCode) {
   std::string Code = "#include <map>";
-  std::string Expected = "#include <map>#include <vector>\n";
+  std::string Expected = "#include <map>\n#include <vector>\n";
   tooling::Replacements Replaces =
       toReplacements({createInsertion("#include <vector>")});
+  EXPECT_EQ(Expected, apply(Code, Replaces));
+}
+
+TEST_F(CleanUpReplacementsTest, NoNewLineAtTheEndOfCodeMultipleInsertions) {
+  std::string Code = "#include <map>";
+  std::string Expected =
+      "#include <map>\n#include <string>\n#include <vector>\n";
+  tooling::Replacements Replaces =
+      toReplacements({createInsertion("#include <string>"),
+                      createInsertion("#include <vector>")});
   EXPECT_EQ(Expected, apply(Code, Replaces));
 }
 
@@ -792,6 +836,117 @@ TEST_F(CleanUpReplacementsTest, InsertionAndDeleteHeader) {
                          "#include <map>\n";
   tooling::Replacements Replaces = toReplacements(
       {createDeletion("<vector>"), createInsertion("#include <map>")});
+  EXPECT_EQ(Expected, apply(Code, Replaces));
+}
+
+TEST_F(CleanUpReplacementsTest, NoInsertionAfterCode) {
+  std::string Code = "#include \"a.h\"\n"
+                     "void f() {}\n"
+                     "#include \"b.h\"\n";
+  std::string Expected = "#include \"a.h\"\n"
+                         "#include \"c.h\"\n"
+                         "void f() {}\n"
+                         "#include \"b.h\"\n";
+  tooling::Replacements Replaces = toReplacements(
+      {createInsertion("#include \"c.h\"")});
+  EXPECT_EQ(Expected, apply(Code, Replaces));
+}
+
+TEST_F(CleanUpReplacementsTest, NoInsertionInStringLiteral) {
+  std::string Code = "#include \"a.h\"\n"
+                     "const char[] = R\"(\n"
+                     "#include \"b.h\"\n"
+                     ")\";\n";
+  std::string Expected = "#include \"a.h\"\n"
+                         "#include \"c.h\"\n"
+                         "const char[] = R\"(\n"
+                         "#include \"b.h\"\n"
+                         ")\";\n";
+  tooling::Replacements Replaces =
+      toReplacements({createInsertion("#include \"c.h\"")});
+  EXPECT_EQ(Expected, apply(Code, Replaces));
+}
+
+TEST_F(CleanUpReplacementsTest, NoInsertionAfterOtherDirective) {
+  std::string Code = "#include \"a.h\"\n"
+                     "#ifdef X\n"
+                     "#include \"b.h\"\n"
+                     "#endif\n";
+  std::string Expected = "#include \"a.h\"\n"
+                         "#include \"c.h\"\n"
+                         "#ifdef X\n"
+                         "#include \"b.h\"\n"
+                         "#endif\n";
+  tooling::Replacements Replaces = toReplacements(
+      {createInsertion("#include \"c.h\"")});
+  EXPECT_EQ(Expected, apply(Code, Replaces));
+}
+
+TEST_F(CleanUpReplacementsTest, CanInsertAfterLongSystemInclude) {
+  std::string Code = "#include \"a.h\"\n"
+                     "// comment\n\n"
+                     "#include <a/b/c/d/e.h>\n";
+  std::string Expected = "#include \"a.h\"\n"
+                         "// comment\n\n"
+                         "#include <a/b/c/d/e.h>\n"
+                         "#include <x.h>\n";
+  tooling::Replacements Replaces =
+      toReplacements({createInsertion("#include <x.h>")});
+  EXPECT_EQ(Expected, apply(Code, Replaces));
+}
+
+TEST_F(CleanUpReplacementsTest, CanInsertAfterComment) {
+  std::string Code = "#include \"a.h\"\n"
+                     "// Comment\n"
+                     "\n"
+                     "/* Comment */\n"
+                     "// Comment\n"
+                     "\n"
+                     "#include \"b.h\"\n";
+  std::string Expected = "#include \"a.h\"\n"
+                         "// Comment\n"
+                         "\n"
+                         "/* Comment */\n"
+                         "// Comment\n"
+                         "\n"
+                         "#include \"b.h\"\n"
+                         "#include \"c.h\"\n";
+  tooling::Replacements Replaces =
+      toReplacements({createInsertion("#include \"c.h\"")});
+  EXPECT_EQ(Expected, apply(Code, Replaces));
+}
+
+TEST_F(CleanUpReplacementsTest, LongCommentsInTheBeginningOfFile) {
+  std::string Code = "// Loooooooooooooooooooooooooong comment\n"
+                     "// Loooooooooooooooooooooooooong comment\n"
+                     "// Loooooooooooooooooooooooooong comment\n"
+                     "#include <string>\n"
+                     "#include <vector>\n"
+                     "\n"
+                     "#include \"a.h\"\n"
+                     "#include \"b.h\"\n";
+  std::string Expected = "// Loooooooooooooooooooooooooong comment\n"
+                         "// Loooooooooooooooooooooooooong comment\n"
+                         "// Loooooooooooooooooooooooooong comment\n"
+                         "#include <string>\n"
+                         "#include <vector>\n"
+                         "\n"
+                         "#include \"a.h\"\n"
+                         "#include \"b.h\"\n"
+                         "#include \"third.h\"\n";
+  tooling::Replacements Replaces =
+      toReplacements({createInsertion("#include \"third.h\"")});
+  Style = format::getGoogleStyle(format::FormatStyle::LanguageKind::LK_Cpp);
+  EXPECT_EQ(Expected, apply(Code, Replaces));
+}
+
+TEST_F(CleanUpReplacementsTest, CanDeleteAfterCode) {
+  std::string Code = "#include \"a.h\"\n"
+                     "void f() {}\n"
+                     "#include \"b.h\"\n";
+  std::string Expected = "#include \"a.h\"\n"
+                         "void f() {}\n";
+  tooling::Replacements Replaces = toReplacements({createDeletion("\"b.h\"")});
   EXPECT_EQ(Expected, apply(Code, Replaces));
 }
 

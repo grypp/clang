@@ -1,7 +1,13 @@
-// RUN: %clang_cc1 -verify -fopenmp -ferror-limit 100 %s
+// RUN: %clang_cc1 -verify -fopenmp %s
 
+void foo() {
+}
 
-struct S1; // expected-note 2 {{declared here}}
+bool foobool(int argc) {
+  return argc;
+}
+
+struct S1; // expected-note {{declared here}}
 extern S1 a;
 class S2 {
   mutable int a;
@@ -36,167 +42,15 @@ public:
 };
 
 S3 h;
-#pragma omp threadprivate(h) // expected-note 2 {{defined as threadprivate or thread local}}
+#pragma omp threadprivate(h) // expected-note {{defined as threadprivate or thread local}}
 
 namespace A {
 double x;
-#pragma omp threadprivate(x) // expected-note 2 {{defined as threadprivate or thread local}}
+#pragma omp threadprivate(x) // expected-note {{defined as threadprivate or thread local}}
 }
 namespace B {
 using A::x;
 }
-
-template <class T, typename S, int N>
-T tmain(T argc, S **argv) {
-  const int d = 5;
-  const int da[5] = { 0 };
-  S4 e(4);
-  S5 g(5);
-  int i;
-  int &j = i;
-  int acc = 0;
-  int n = 1000;
-  
-#pragma omp target
-#pragma omp teams distribute parallel for shared // expected-error {{expected '(' after 'shared'}}
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared ( // expected-error {{expected expression}} expected-error {{expected ')'}} expected-note {{to match this '('}}
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared () // expected-error {{expected expression}}
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared (argc // expected-error {{expected ')'}} expected-note {{to match this '('}}
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared (argc, // expected-error {{expected expression}} expected-error {{expected ')'}} expected-note {{to match this '('}}
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared (argc > 0 ? argv[1] : argv[2]) // expected-error {{expected variable name}}
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared (argc)
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared (S1) // expected-error {{'S1' does not refer to a value}}
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared (a, b, c, d, f)
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared (argv[1]) // expected-error {{expected variable name}}
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared(ba)
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared(ca)
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared(da)
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared(e, g)
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared(h, B::x) // expected-error 2 {{threadprivate or thread local variable cannot be shared}}
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for private(i), shared(i) // expected-error {{private variable cannot be shared}} expected-note {{defined as private}}
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for firstprivate(i), shared(i) // expected-error {{firstprivate variable cannot be shared}} expected-note {{defined as firstprivate}}
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for private(i)
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared(i)
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared(j)
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for firstprivate(i)
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared(i)
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared(j)
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-return T();
-}
-
 
 int main(int argc, char **argv) {
   const int d = 5;
@@ -205,146 +59,69 @@ int main(int argc, char **argv) {
   S5 g(5);
   int i;
   int &j = i;
-  int acc = 0;
-  int n = argc;
+  #pragma omp target
+  #pragma omp teams distribute parallel for shared // expected-error {{expected '(' after 'shared'}}
+  for (int j=0; j<100; j++) foo();
+  #pragma omp target
+  #pragma omp teams distribute parallel for shared ( // expected-error {{expected expression}} expected-error {{expected ')'}} expected-note {{to match this '('}}
+  for (int j=0; j<100; j++) foo();
+  #pragma omp target
+  #pragma omp teams distribute parallel for shared () // expected-error {{expected expression}}
+  for (int j=0; j<100; j++) foo();
+  #pragma omp target
+  #pragma omp teams distribute parallel for shared (argc // expected-error {{expected ')'}} expected-note {{to match this '('}}
+  for (int j=0; j<100; j++) foo();
+  #pragma omp target
+  #pragma omp teams distribute parallel for shared (argc, // expected-error {{expected expression}} expected-error {{expected ')'}} expected-note {{to match this '('}}
+  for (int j=0; j<100; j++) foo();
+  #pragma omp target
+  #pragma omp teams distribute parallel for shared (argc > 0 ? argv[1] : argv[2]) // expected-error {{expected variable name}}
+  for (int j=0; j<100; j++) foo();
+  #pragma omp target
+  #pragma omp teams distribute parallel for shared (argc)
+  for (int j=0; j<100; j++) foo();
+  #pragma omp target
+  #pragma omp teams distribute parallel for shared (S1) // expected-error {{'S1' does not refer to a value}}
+  for (int j=0; j<100; j++) foo();
+  #pragma omp target
+  #pragma omp teams distribute parallel for shared (a, b, c, d, f)
+  for (int j=0; j<100; j++) foo();
+  #pragma omp target
+  #pragma omp teams distribute parallel for shared (argv[1]) // expected-error {{expected variable name}}
+  for (int j=0; j<100; j++) foo();
+  #pragma omp target
+  #pragma omp teams distribute parallel for shared(ba)
+  for (int j=0; j<100; j++) foo();
+  #pragma omp target
+  #pragma omp teams distribute parallel for shared(ca)
+  for (int j=0; j<100; j++) foo();
+  #pragma omp target
+  #pragma omp teams distribute parallel for shared(da)
+  for (int j=0; j<100; j++) foo();
+  #pragma omp target
+  #pragma omp teams distribute parallel for shared(e, g)
+  for (int j=0; j<100; j++) foo();
+  #pragma omp target
+  #pragma omp teams distribute parallel for shared(h, B::x) // expected-error 2 {{threadprivate or thread local variable cannot be shared}}
+  for (int j=0; j<100; j++) foo();
+  #pragma omp target
+  #pragma omp teams distribute parallel for private(i), shared(i) // expected-error {{private variable cannot be shared}} expected-note {{defined as private}}
+  for (int j=0; j<100; j++) foo();
+  #pragma omp target
+  #pragma omp teams distribute parallel for firstprivate(i), shared(i) // expected-error {{firstprivate variable cannot be shared}} expected-note {{defined as firstprivate}}
+  for (int j=0; j<100; j++) foo();
+  #pragma omp target
+  #pragma omp teams distribute parallel for private(i)
+  for (int j=0; j<100; j++) foo();
+  #pragma omp target
+  #pragma omp teams distribute parallel for shared(i)
+  for (int j=0; j<100; j++) foo();
+  #pragma omp target
+  #pragma omp teams distribute parallel for shared(j)
+  for (int j=0; j<100; j++) foo();
+  #pragma omp target
+  #pragma omp teams distribute parallel for firstprivate(i)
+  for (int j=0; j<100; j++) foo();
 
-#pragma omp target
-#pragma omp teams distribute parallel for shared // expected-error {{expected '(' after 'shared'}}
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared ( // expected-error {{expected expression}} expected-error {{expected ')'}} expected-note {{to match this '('}}
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared () // expected-error {{expected expression}}
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared (argc // expected-error {{expected ')'}} expected-note {{to match this '('}}
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared (argc, // expected-error {{expected expression}} expected-error {{expected ')'}} expected-note {{to match this '('}}
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared (argc > 0 ? argv[1] : argv[2]) // expected-error {{expected variable name}}
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared (argc)
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared (S1) // expected-error {{'S1' does not refer to a value}}
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared (a, b, c, d, f)
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared (argv[1]) // expected-error {{expected variable name}}
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared(ba)
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared(ca)
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared(da)
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared(e, g)
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared(h, B::x) // expected-error 2 {{threadprivate or thread local variable cannot be shared}}
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for private(i), shared(i) // expected-error {{private variable cannot be shared}} expected-note {{defined as private}}
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for firstprivate(i), shared(i) // expected-error {{firstprivate variable cannot be shared}} expected-note {{defined as firstprivate}}
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for private(i)
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared(i)
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared(j)
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for firstprivate(i)
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared(i)
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-#pragma omp target
-#pragma omp teams distribute parallel for shared(j)
-  for(int k = 0 ; k < n ; k++) {
-    acc++;
-  }
-
-return tmain<int, char, 1000>(argc, argv); // expected-note {{in instantiation of function template specialization 'tmain<int, char, 1000>' requested here}}
+  return 0;
 }

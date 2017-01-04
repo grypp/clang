@@ -29,7 +29,7 @@ int fooz()
   // CK1:  define internal i32 @_{{.+}}foo
   // CK1:  call i32 @_{{.+}}bar
   // CK1:  define linkonce_odr i32 @_{{.+}}bar
-  // CK1:  define void @__omp_offloading_[[FILEID:[0-9a-f]+_[0-9a-f]+]]__{{.+}}fooz
+  // CK1:  define {{.*}}void @__omp_offloading_[[FILEID:[0-9a-f]+_[0-9a-f]+]]__{{.+}}fooz
   // CK1:  call i32 @_{{.+}}foo
   // CK1:  call i32 @_{{.+}}baz
   // CK1:  declare i32 @_{{.+}}baz
@@ -126,7 +126,7 @@ int fooz()
           //spinner.getAll_V();
           spinner.getAll_H();
       }
-      // CK2:  define void @__omp_offloading_[[FILEID:[0-9a-f]+_[0-9a-f]+]]__{{.+}}fooz
+      // CK2:  define {{.*}}void @__omp_offloading_[[FILEID:[0-9a-f]+_[0-9a-f]+]]__{{.+}}fooz
       // CK2:  call i32 @_{{.+}}zoo{{.+}}getAll_H{{.+}}(%class.zoo
       // CK2-NOT:  call i32 @_{{.+}}plugh{{.+}}getAll_H{{.+}}(%class.plugh
       // CK2:  define linkonce_odr i32 @_{{.+}}zoo{{.+}}getAll_H{{.+}}(%class.zoo
@@ -174,8 +174,8 @@ void fooz()
   // CK3:    store %class.anon* %plugh, %class.anon** %plugh.addr, align 8
   // CK3:    call void @"_{{.+}}funky{{.+}}fooz{{.+}}
   // CK3:    call void @"_{{.+}}funky
-  // CK3:    define internal void @"_{{.+}}funky{{.+}}fooz
-  // CK3:    define internal void @"_{{.+}}funky
+  // CK3:    define {{.*}}void @"_{{.+}}funky{{.+}}fooz
+  // CK3:    define {{.*}}void @"_{{.+}}funky
 
 }
 
@@ -221,7 +221,7 @@ void fooz (int argc, char* argv[])
   // CK4:   define internal i32 [[LAMBDANAME:@.+]](%class.anon* dereferenceable(1) %b, i32* dereferenceable(4) %args, i32* dereferenceable(4) %args1, i32* dereferenceable(4) %args3, %class.anon.0* dereferenceable(1) %args5)
   // CK4:   define internal i32 [[LAMBDANAME2:@.+]](%class.anon.2* %this, i32* dereferenceable(4) %args, i32* dereferenceable(4) %args1, i32* dereferenceable(4) %args3, %class.anon.0* dereferenceable(1) %args5)
   // CK4:   call i32 [[LAMBDANAME]]
-  // CK4:   define void @__omp_offloading_[[FILEID:[0-9a-f]+_[0-9a-f]+]]__{{.+}}fooz
+  // CK4:   define {{.*}}void @__omp_offloading_[[FILEID:[0-9a-f]+_[0-9a-f]+]]__{{.+}}fooz
   // CK4:   call i32 [[LAMBDANAME2]]
 
 }
@@ -240,62 +240,62 @@ int fooz()
 {
   int i = 0;
 
-  // CK5: define void @__omp_offloading_{{.+}}(i{{64|32}} %{{.+}})
+  // CK5: define {{.*}}void @__omp_offloading_{{.+}}(i{{64|32}} %{{.+}})
   #pragma omp target teams
   {
     foo(i);
   }
 
-  // FIXME: Not supported yet
+  // CK5: define {{.*}}void @__omp_offloading_{{.+}}(i{{64|32}} %{{.+}})
   #pragma omp target teams distribute
   for(i=0; i<10; ++i)
   {
     foo(i);
   }
 
-  // CK5: define void @__omp_offloading_{{.+}}(i{{64|32}} %{{.+}})
+  // CK5: define {{.*}}void @__omp_offloading_{{.+}}(i{{64|32}} %{{.+}})
   #pragma omp target teams distribute parallel for
   for(i=0; i<10; ++i)
   {
     foo(i);
   }
 
-  // CK5: define void @__omp_offloading_{{.+}}(i{{64|32}} %{{.+}})
+  // CK5: define {{.*}}void @__omp_offloading_{{.+}}(i{{64|32}} %{{.+}})
   #pragma omp target teams distribute parallel for simd
   for(i=0; i<10; ++i)
   {
     foo(i);
   }
 
-  // FIXME: Not supported yet
+  // CK5: define {{.*}}void @__omp_offloading_{{.+}}(i{{64|32}} %{{.+}})
   #pragma omp target teams distribute simd
   for(i=0; i<10; ++i)
   {
     foo(i);
   }
 
-  // CK5: define void @__omp_offloading_{{.+}}(i{{64|32}} %{{.+}})
+  // CK5: define {{.*}}void @__omp_offloading_{{.+}}(i{{64|32}} %{{.+}})
   #pragma omp target parallel for
   for(i=0; i<10; ++i)
   {
     foo(i);
   }
 
-  // CK5: define void @__omp_offloading_{{.+}}(i{{64|32}} %{{.+}})
+  // CK5: define {{.*}}void @__omp_offloading_{{.+}}(i{{64|32}} %{{.+}})
   #pragma omp target parallel for simd
   for(i=0; i<10; ++i)
   {
     foo(i);
   }
 
-  // CK5: define void @__omp_offloading_{{.+}}(i{{64|32}} %{{.+}})
+  // CK5: define {{.*}}void @__omp_offloading_{{.+}}(i{{64|32}} %{{.+}})
   #pragma omp target simd
   for(i=0; i<10; ++i)
   {
     foo(i);
   }
 
-  // CK5: define void @__omp_offloading_{{.+}}(i{{64|32}} %{{.+}})
+  // CK5: define {{.*}}void @__omp_offloading_{{.+}}(i{{64|32}} %{{.+}})
   #pragma omp target parallel
   {
     foo(i);

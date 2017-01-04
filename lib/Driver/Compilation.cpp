@@ -37,7 +37,7 @@ Compilation::~Compilation() {
   delete Args;
 
   // Free any derived arg lists.
-  for (auto &Arg : TCArgs)
+  for (auto Arg : TCArgs)
     if (Arg.second != TranslatedArgs)
       delete Arg.second;
 
@@ -51,7 +51,7 @@ Compilation::~Compilation() {
 }
 
 const DerivedArgList &
-Compilation::getArgsForToolChain(const ToolChain *TC, const char *BoundArch,
+Compilation::getArgsForToolChain(const ToolChain *TC, StringRef BoundArch,
                                  Action::OffloadKind DeviceOffloadKind) {
   if (!TC)
     TC = &DefaultToolChain;

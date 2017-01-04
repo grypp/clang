@@ -34,7 +34,29 @@ T tmain(T argc, T *argv) {
   return 0;
 }
 
-// CHECK: template <typename T = int, int C = 5> int tmain(int argc, int *argv) {
+// CHECK: template <typename T, int C> T tmain(T argc, T *argv) {
+// CHECK-NEXT: T i, j, a[20]
+// CHECK-NEXT: #pragma omp target teams
+// CHECK-NEXT: foo();
+// CHECK-NEXT: #pragma omp target teams if(target: argc > 0)
+// CHECK-NEXT: foo()
+// CHECK-NEXT: #pragma omp target teams if(C)
+// CHECK-NEXT: foo()
+// CHECK-NEXT: #pragma omp target teams map(tofrom: i)
+// CHECK-NEXT: foo()
+// CHECK-NEXT: #pragma omp target teams map(tofrom: a[0:10],i)
+// CHECK-NEXT: foo()
+// CHECK-NEXT: #pragma omp target teams map(to: i) map(from: j)
+// CHECK-NEXT: foo()
+// CHECK-NEXT: #pragma omp target teams map(always,alloc: i)
+// CHECK-NEXT: foo()
+// CHECK-NEXT: #pragma omp target teams nowait
+// CHECK-NEXT: foo()
+// CHECK-NEXT: #pragma omp target teams depend(in : argc,argv[i:argc],a[:])
+// CHECK-NEXT: foo()
+// CHECK-NEXT: #pragma omp target teams defaultmap(tofrom: scalar)
+// CHECK-NEXT: foo()
+// CHECK: template<> int tmain<int, 5>(int argc, int *argv) {
 // CHECK-NEXT: int i, j, a[20]
 // CHECK-NEXT: #pragma omp target teams
 // CHECK-NEXT: foo();
@@ -56,35 +78,13 @@ T tmain(T argc, T *argv) {
 // CHECK-NEXT: foo()
 // CHECK-NEXT: #pragma omp target teams defaultmap(tofrom: scalar)
 // CHECK-NEXT: foo()
-// CHECK: template <typename T = char, int C = 1> char tmain(char argc, char *argv) {
+// CHECK: template<> char tmain<char, 1>(char argc, char *argv)
 // CHECK-NEXT: char i, j, a[20]
 // CHECK-NEXT: #pragma omp target teams
 // CHECK-NEXT: foo();
 // CHECK-NEXT: #pragma omp target teams if(target: argc > 0)
 // CHECK-NEXT: foo()
 // CHECK-NEXT: #pragma omp target teams if(1)
-// CHECK-NEXT: foo()
-// CHECK-NEXT: #pragma omp target teams map(tofrom: i)
-// CHECK-NEXT: foo()
-// CHECK-NEXT: #pragma omp target teams map(tofrom: a[0:10],i)
-// CHECK-NEXT: foo()
-// CHECK-NEXT: #pragma omp target teams map(to: i) map(from: j)
-// CHECK-NEXT: foo()
-// CHECK-NEXT: #pragma omp target teams map(always,alloc: i)
-// CHECK-NEXT: foo()
-// CHECK-NEXT: #pragma omp target teams nowait
-// CHECK-NEXT: foo()
-// CHECK-NEXT: #pragma omp target teams depend(in : argc,argv[i:argc],a[:])
-// CHECK-NEXT: foo()
-// CHECK-NEXT: #pragma omp target teams defaultmap(tofrom: scalar)
-// CHECK-NEXT: foo()
-// CHECK: template <typename T, int C> T tmain(T argc, T *argv) {
-// CHECK-NEXT: T i, j, a[20]
-// CHECK-NEXT: #pragma omp target teams
-// CHECK-NEXT: foo();
-// CHECK-NEXT: #pragma omp target teams if(target: argc > 0)
-// CHECK-NEXT: foo()
-// CHECK-NEXT: #pragma omp target teams if(C)
 // CHECK-NEXT: foo()
 // CHECK-NEXT: #pragma omp target teams map(tofrom: i)
 // CHECK-NEXT: foo()

@@ -31,7 +31,7 @@ int foo(int n, double* ptr) {
   {
   }
 
-  // TCHECK:  define void @__omp_offloading_{{.+}}()
+  // TCHECK:  define {{.*}}void @__omp_offloading_{{.+[0-9]}}()
   // TCHECK:  [[ATA:%.+]] = alloca i32,
   // TCHECK:  [[ATE:%.+]] = alloca i32,
   // TCHECK-DAG:  store i{{[0-9]+}} [[ATA_VAL:%.+]], i{{[0-9]+}}* [[ATE]],
@@ -45,7 +45,7 @@ int foo(int n, double* ptr) {
   {
   }
 
-  // TCHECK:  define void @__omp_offloading_{{.+}}(i{{[0-9]+}} [[A_IN:%.+]])
+  // TCHECK:  define {{.*}}void @__omp_offloading_{{.+[0-9]}}(i{{[0-9]+}} [[A_IN:%.+]])
   // TCHECK:  [[A_ADDR:%.+]] = alloca i{{[0-9]+}},
   // TCHECK:  store i{{[0-9]+}} [[A_IN]], i{{[0-9]+}}* [[A_ADDR]],
   // TCHECK-64:  [[CONV:%.+]] = bitcast i{{[0-9]+}}* [[A_ADDR]] to i{{[0-9]+}}*
@@ -58,7 +58,7 @@ int foo(int n, double* ptr) {
   {
   }
 
-  // TCHECK:  define void @__omp_offloading_{{.+}}(i{{[0-9]+}} [[A_IN:%.+]])
+  // TCHECK:  define {{.*}}void @__omp_offloading_{{.+[0-9]}}(i{{[0-9]+}} [[A_IN:%.+]])
   // TCHECK:  [[A_ADDR:%.+]] = alloca i{{[0-9]+}},
   // TCHECK-64:  [[CONV:%.+]] = bitcast i{{[0-9]+}}* [[A_ADDR]] to i{{[0-9]+}}*
   // TCHECK-64:  [[A_IN_VAL:%.+]] = load i{{[0-9]+}}, i{{[0-9]+}}* [[CONV]],
@@ -71,7 +71,7 @@ int foo(int n, double* ptr) {
     a = 1;
   }
 
-  // TCHECK:  define void @__omp_offloading_{{.+}}()
+  // TCHECK:  define {{.*}}void @__omp_offloading_{{.+[0-9]}}()
   // TCHECK:  [[ATA:%.+]] = alloca i32,
   // TCHECK:  alloca i{{32|64}},
   // TCHECK:  [[ATE:%.+]] = alloca i32,
@@ -86,7 +86,7 @@ int foo(int n, double* ptr) {
     a = 1;
   }
 
-  // TCHECK:  define void @__omp_offloading_{{.+}}(i{{[0-9]+}} [[A_IN:%.+]])
+  // TCHECK:  define {{.*}}void @__omp_offloading_{{.+[0-9]}}(i{{[0-9]+}} [[A_IN:%.+]])
   // TCHECK:  [[A_ADDR:%.+]] = alloca i{{[0-9]+}},
   // TCHECK:  alloca i{{[0-9]+}},
   // TCHECK:  [[ATE:%.+]] = alloca i{{[0-9]+}},
@@ -107,7 +107,7 @@ int foo(int n, double* ptr) {
     a = 1;
   }
 
-  // TCHECK:  define void @__omp_offloading_{{.+}}(i{{[0-9]+}} [[A_IN:%.+]])
+  // TCHECK:  define {{.*}}void @__omp_offloading_{{.+[0-9]}}(i{{[0-9]+}} [[A_IN:%.+]])
   // TCHECK:  [[A_ADDR:%.+]] = alloca i{{[0-9]+}},
   // TCHECK:  alloca i{{[0-9]+}},
   // TCHECK:  [[ATE:%.+]] = alloca i{{[0-9]+}},
@@ -129,7 +129,7 @@ int foo(int n, double* ptr) {
     aa = 1;
   }
 
-  // TCHECK:  define void @__omp_offloading_{{.+}}()
+  // TCHECK:  define {{.*}}void @__omp_offloading_{{.+[0-9]}}()
   // TCHECK:  [[ATA:%.+]] = alloca i{{[0-9]+}},
   // TCHECK:  [[A2TA:%.+]] = alloca i{{[0-9]+}},
   // TCHECK:  alloca i{{[0-9]+}},
@@ -151,7 +151,7 @@ int foo(int n, double* ptr) {
     aa = 1;
   }
 
-  // TCHECK:  define void @__omp_offloading_{{.+}}(i{{[0-9]+}} [[A_IN:%.+]], i{{[0-9]+}} [[A2_IN:%.+]])
+  // TCHECK:  define {{.*}}void @__omp_offloading_{{.+[0-9]}}(i{{[0-9]+}} [[A_IN:%.+]], i{{[0-9]+}} [[A2_IN:%.+]])
   // TCHECK:  [[A_ADDR:%.+]] = alloca i{{[0-9]+}},
   // TCHECK:  [[A2_ADDR:%.+]] = alloca i{{[0-9]+}},
   // TCHECK:  alloca i{{[0-9]+}},
@@ -184,7 +184,7 @@ int foo(int n, double* ptr) {
   }
 
   // check that we are not using the firstprivate parameter
-  // TCHECK:  define void @__omp_offloading_{{.+}}(i{{[0-9]+}} [[A_IN:%.+]], i{{[0-9]+}} [[A2_IN:%.+]])
+  // TCHECK:  define {{.*}}void @__omp_offloading_{{.+[0-9]}}(i{{[0-9]+}} [[A_IN:%.+]], i{{[0-9]+}} [[A2_IN:%.+]])
   // TCHECK:  [[A_ADDR:%.+]] = alloca i{{[0-9]+}},
   // TCHECK:  [[A2_ADDR:%.+]] = alloca i{{[0-9]+}},
   // TCHECK:  alloca i{{[0-9]+}},
@@ -224,7 +224,7 @@ int foo(int n, double* ptr) {
     d.Y = 1;
   }
 
-  // TCHECK:  define void @__omp_offloading_{{.+}}()
+  // TCHECK:  define {{.*}}void @__omp_offloading_{{.+[0-9]}}()
   // TCHECK:  [[ATA:%.+]] = alloca i{{[0-9]+}},
   // TCHECK:  [[BTA:%.+]] = alloca [10 x float],
   // TCHECK:  [[CTA:%.+]] = alloca [5 x [10 x double]],
@@ -267,7 +267,7 @@ int foo(int n, double* ptr) {
     d.Y = 1;
   }
 
-  // TCHECK:  define void @__omp_offloading_{{.+}}(i{{[0-9]+}} [[A_IN:%.+]], [10 x float]*{{.+}} [[B_IN:%.+]], [5 x [10 x double]]*{{.+}} [[C_IN:%.+]], [[TT]]*{{.+}} [[D_IN:%.+]])
+  // TCHECK:  define {{.*}}void @__omp_offloading_{{.+[0-9]}}(i{{[0-9]+}} [[A_IN:%.+]], [10 x float]*{{.+}} [[B_IN:%.+]], [5 x [10 x double]]*{{.+}} [[C_IN:%.+]], [[TT]]*{{.+}} [[D_IN:%.+]])
   // TCHECK:  [[A_ADDR:%.+]] = alloca i{{[0-9]+}},
   // TCHECK:  [[B_ADDR:%.+]] = alloca [10 x float]*,
   // TCHECK:  [[C_ADDR:%.+]] = alloca [5 x [10 x double]]*,
@@ -321,7 +321,7 @@ int foo(int n, double* ptr) {
     d.Y = 1;
   }
 
-  // TCHECK:  define void @__omp_offloading_{{.+}}(i{{[0-9]+}} [[A_IN:%.+]], [10 x float]*{{.+}} [[B_IN:%.+]], [5 x [10 x double]]*{{.+}} [[C_IN:%.+]], [[TT]]*{{.+}} [[D_IN:%.+]])
+  // TCHECK:  define {{.*}}void @__omp_offloading_{{.+[0-9]}}(i{{[0-9]+}} [[A_IN:%.+]], [10 x float]*{{.+}} [[B_IN:%.+]], [5 x [10 x double]]*{{.+}} [[C_IN:%.+]], [[TT]]*{{.+}} [[D_IN:%.+]])
   // TCHECK:  [[A_ADDR:%.+]] = alloca i{{[0-9]+}},
   // TCHECK:  [[B_ADDR:%.+]] = alloca [10 x float]*,
   // TCHECK:  [[C_ADDR:%.+]] = alloca [5 x [10 x double]]*,
@@ -384,7 +384,7 @@ int foo(int n, double* ptr) {
     ptr[0]++;
   }
 
-  // TCHECK:  define void @__omp_offloading_{{.+}}(double* [[PTR_IN:%.+]])
+  // TCHECK:  define {{.*}}void @__omp_offloading_{{.+[0-9]}}(double* [[PTR_IN:%.+]])
   // TCHECK:  [[PTR_ADDR:%.+]] = alloca double*,
   // TCHECK:  [[PTR:%.+]] = alloca double*,
   // TCHECK:  store double* [[PTR_IN]], double** [[PTR_ADDR]],
@@ -403,7 +403,7 @@ int foo(int n, double* ptr) {
     ptr[0]++;
   }
 
-  // TCHECK:  define void @__omp_offloading_{{.+}}(double* [[PTR_IN:%.+]])
+  // TCHECK:  define {{.*}}void @__omp_offloading_{{.+[0-9]}}(double* [[PTR_IN:%.+]])
   // TCHECK:  [[PTR_ADDR:%.+]] = alloca double*,
   // TCHECK:  [[PTR:%.+]] = alloca double*,
   // TCHECK:  store double* [[PTR_IN]], double** [[PTR_ADDR]],
@@ -466,7 +466,7 @@ int fstatic(int n) {
     b[2] = 1;
   }
 
-// TCHECK: define void @__omp_offloading_{{.+}}()
+// TCHECK: define {{.*}}void @__omp_offloading_{{.+[0-9]}}()
 // TCHECK:  [[ATA:%.+]] = alloca i{{[0-9]+}},
 // TCHECK:  [[A2TA:%.+]] = alloca i{{[0-9]+}},
 // TCHECK:  [[A3TA:%.+]] = alloca i{{[0-9]+}},
@@ -506,7 +506,7 @@ int fstatic(int n) {
     b[2] = 1;
   }
 
-// TCHECK: define void @__omp_offloading_{{.+}}(i{{[0-9]+}} [[A_IN:%.+]], i{{[0-9]+}} [[A2_IN:%.+]], i{{[0-9]+}} [[A3_IN:%.+]], [10 x i{{[0-9]+}}]*{{.+}} [[B_IN:%.+]])
+// TCHECK: define {{.*}}void @__omp_offloading_{{.+[0-9]}}(i{{[0-9]+}} [[A_IN:%.+]], i{{[0-9]+}} [[A2_IN:%.+]], i{{[0-9]+}} [[A3_IN:%.+]], [10 x i{{[0-9]+}}]*{{.+}} [[B_IN:%.+]])
 // TCHECK:  [[A_ADDR:%.+]] = alloca i{{[0-9]+}},
 // TCHECK:  [[A2_ADDR:%.+]] = alloca i{{[0-9]+}},
 // TCHECK:  [[A3_ADDR:%.+]] = alloca i{{[0-9]+}},
@@ -556,7 +556,7 @@ int fstatic(int n) {
     b[2] = 1;
   }
 
-// TCHECK: define void @__omp_offloading_{{.+}}(i{{[0-9]+}} [[A_IN:%.+]], i{{[0-9]+}} [[A2_IN:%.+]], i{{[0-9]+}} [[A3_IN:%.+]], [10 x i{{[0-9]+}}]*{{.+}} [[B_IN:%.+]])
+// TCHECK: define {{.*}}void @__omp_offloading_{{.+[0-9]}}(i{{[0-9]+}} [[A_IN:%.+]], i{{[0-9]+}} [[A2_IN:%.+]], i{{[0-9]+}} [[A3_IN:%.+]], [10 x i{{[0-9]+}}]*{{.+}} [[B_IN:%.+]])
 // TCHECK:  [[A_ADDR:%.+]] = alloca i{{[0-9]+}},
 // TCHECK:  [[A2_ADDR:%.+]] = alloca i{{[0-9]+}},
 // TCHECK:  [[A3_ADDR:%.+]] = alloca i{{[0-9]+}},
@@ -621,7 +621,7 @@ struct S1 {
       c[1][1] = ++a;
     }
 
-  // TCHECK:  define void @__omp_offloading_{{.+}}([[S1]]* [[TH:%.+]])
+  // TCHECK:  define {{.*}}void @__omp_offloading_{{.+[0-9]}}([[S1]]* [[TH:%.+]])
   // TCHECK:  [[TH_ADDR:%.+]] = alloca [[S1]]*,
   // TCHECK:  [[BTA:%.+]] = alloca i{{[0-9]+}},
   // TCHECK:  [[CTA:%.+]] = alloca [2 x [5 x i{{[0-9]+}}]],
@@ -662,7 +662,7 @@ struct S1 {
       c[1][1] = ++a;
     }
 
-  // TCHECK:  define void @__omp_offloading_{{.+}}(i{{[0-9]+}} [[B_IN:%.+]], [2 x [5 x i{{[0-9]+}}]]*{{.+}} [[C_IN:%.+]], [[S1]]* [[TH:%.+]])
+  // TCHECK:  define {{.*}}void @__omp_offloading_{{.+[0-9]}}(i{{[0-9]+}} [[B_IN:%.+]], [2 x [5 x i{{[0-9]+}}]]*{{.+}} [[C_IN:%.+]], [[S1]]* [[TH:%.+]])
   // TCHECK:  [[B_ADDR:%.+]] = alloca i{{[0-9]+}},
   // TCHECK:  [[C_ADDR:%.+]] = alloca [2 x [5 x i{{[0-9]+}}]]*,
   // TCHECK:  [[TH_ADDR:%.+]] = alloca [[S1]]*,
@@ -714,7 +714,7 @@ struct S1 {
     return c[1][1] + (int)b;
   }
 
-  // TCHECK:  define void @__omp_offloading_{{.+}}(i{{[0-9]+}} [[B_IN:%.+]], [2 x [5 x i{{[0-9]+}}]]*{{.+}} [[C_IN:%.+]], [[S1]]* [[TH:%.+]])
+  // TCHECK:  define {{.*}}void @__omp_offloading_{{.+[0-9]}}(i{{[0-9]+}} [[B_IN:%.+]], [2 x [5 x i{{[0-9]+}}]]*{{.+}} [[C_IN:%.+]], [[S1]]* [[TH:%.+]])
   // TCHECK: [[B_ADDR:%.+]] = alloca i{{[0-9]+}},
   // TCHECK: [[C_ADDR:%.+]] = alloca [2 x [5 x i{{[0-9]+}}]]*,
   // TCHECK: [[TH_ADDR:%.+]] = alloca [[S1]]*,
@@ -775,7 +775,7 @@ int bar(int n, double* ptr){
 }
 
 // template
-// TCHECK:  define void @__omp_offloading_{{.+}}()
+// TCHECK:  define {{.*}}void @__omp_offloading_{{.+[0-9]}}()
 // TCHECK:  [[ATA:%.+]] = alloca i{{[0-9]+}},
 // TCHECK:  [[A2TA:%.+]] = alloca i{{[0-9]+}},
 // TCHECK:  [[BTA:%.+]] = alloca [10 x i{{[0-9]+}}],
@@ -801,7 +801,7 @@ int bar(int n, double* ptr){
 // TCHECK: ret void
 
 
-// TCHECK:  define void @__omp_offloading_{{.+}}(i{{[0-9]+}} [[A_IN:%.+]], i{{[0-9]+}} [[A2_IN:%.+]], [10 x i{{[0-9]+}}]*{{.+}} [[B_IN:%.+]])
+// TCHECK:  define {{.*}}void @__omp_offloading_{{.+[0-9]}}(i{{[0-9]+}} [[A_IN:%.+]], i{{[0-9]+}} [[A2_IN:%.+]], [10 x i{{[0-9]+}}]*{{.+}} [[B_IN:%.+]])
 // TCHECK:  [[A_ADDR:%.+]] = alloca i{{[0-9]+}},
 // TCHECK:  [[A2_ADDR:%.+]] = alloca i{{[0-9]+}},
 // TCHECK:  [[B_ADDR:%.+]] = alloca [10 x i{{[0-9]+}}]*,
@@ -835,7 +835,7 @@ int bar(int n, double* ptr){
 // TCHECK: store i{{[0-9]+}} 1, i{{[0-9]+}}* [[B_GEP]],
 // TCHECK: ret void
 
-// TCHECK:  define void @__omp_offloading_{{.+}}(i{{[0-9]+}} [[A_IN:%.+]], i{{[0-9]+}} [[A2_IN:%.+]], [10 x i{{[0-9]+}}]*{{.+}} [[B_IN:%.+]])
+// TCHECK:  define {{.*}}void @__omp_offloading_{{.+[0-9]}}(i{{[0-9]+}} [[A_IN:%.+]], i{{[0-9]+}} [[A2_IN:%.+]], [10 x i{{[0-9]+}}]*{{.+}} [[B_IN:%.+]])
 // TCHECK:  [[A_ADDR:%.+]] = alloca i{{[0-9]+}},
 // TCHECK:  [[A2_ADDR:%.+]] = alloca i{{[0-9]+}},
 // TCHECK:  [[B_ADDR:%.+]] = alloca [10 x i{{[0-9]+}}]*,
